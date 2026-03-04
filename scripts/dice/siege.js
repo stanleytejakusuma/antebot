@@ -26,7 +26,7 @@
 //
 // Each sim sample = one full multi-session run (not a single session).
 
-if (isSimulatedMode) {
+if (isSimulationMode) {
     setSimulationBalance(100);
     resetSeed();
     resetStats();
@@ -62,7 +62,7 @@ var MAX_SESSIONS = 40;                  // Max sessions per run
 var SIM_SAMPLES = 250;
 
 // --- Dynamic bankroll ---
-var BANKROLL = isSimulatedMode ? 100 : Math.floor(balance * 100) / 100;
+var BANKROLL = isSimulationMode ? 100 : Math.floor(balance * 100) / 100;
 var BASE_BET = Math.round(BANKROLL * BASE_PCT * 100) / 100;
 if (BASE_BET < 0.01) BASE_BET = 0.01;
 var MAX_BET = Math.round(BANKROLL * MAX_BET_PCT * 100) / 100;
@@ -97,7 +97,7 @@ var totalVaulted = 0;
 // --- Sim state ---
 var currentSample = 0;
 var sampleResults = [];
-var totalSamples = isSimulatedMode ? SIM_SAMPLES : 1;
+var totalSamples = isSimulationMode ? SIM_SAMPLES : 1;
 var stopped = false;
 
 function resetSession() {
@@ -171,7 +171,7 @@ function endSession(reason) {
         }
     }
 
-    if (isSimulatedMode) {
+    if (isSimulationMode) {
         log('  S' + sessionCount + ' ' + reason + ' | P: $' + runningProfit.toFixed(2) + ' | Cum: $' + cumProfit.toFixed(2) + ' | ' + sessionRolls + 'r');
     }
 
@@ -181,7 +181,7 @@ function endSession(reason) {
         var vaultAmount = Math.round(cumProfit * 100) / 100;
         totalVaulted += vaultAmount;
         depositToVault(vaultAmount);
-        if (isSimulatedMode) {
+        if (isSimulationMode) {
             log('  VAULT: +$' + vaultAmount.toFixed(2) + ' (total vaulted: $' + totalVaulted.toFixed(2) + ')');
         } else {
             log('VAULTED $' + vaultAmount.toFixed(2) + ' | Total vaulted: $' + totalVaulted.toFixed(2));
@@ -242,7 +242,7 @@ function endRun(reason) {
         vaulted: reason === 'WALK_AWAY' ? cumProfit : 0
     });
 
-    if (isSimulatedMode) {
+    if (isSimulationMode) {
         log('RUN ' + currentSample + '/' + totalSamples + ' ' + reason + ' | P: $' + cumProfit.toFixed(2) + ' | Peak: $' + cumPeakProfit.toFixed(2) + ' | ' + sessionCount + ' sessions, ' + totalRolls + ' rolls');
     }
 
@@ -261,7 +261,7 @@ function endRun(reason) {
 // --- Init ---
 betSize = BASE_BET;
 
-log((isSimulatedMode ? '[SIM x' + totalSamples + '] ' : '[LIVE] ') + 'SIEGE v1.3 | Bal: $' + BANKROLL + ' | Base: $' + BASE_BET + ' | 10%/9.9x | Session: +$' + SESSION_TARGET.toFixed(0) + '/-$' + SESSION_STOP.toFixed(0) + ' | Walk: +$' + WALK_AWAY_TARGET.toFixed(0) + ' | CumStop: -$' + CUM_STOP.toFixed(0));
+log((isSimulationMode ? '[SIM x' + totalSamples + '] ' : '[LIVE] ') + 'SIEGE v1.3 | Bal: $' + BANKROLL + ' | Base: $' + BASE_BET + ' | 10%/9.9x | Session: +$' + SESSION_TARGET.toFixed(0) + '/-$' + SESSION_STOP.toFixed(0) + ' | Walk: +$' + WALK_AWAY_TARGET.toFixed(0) + ' | CumStop: -$' + CUM_STOP.toFixed(0));
 
 engine.onBetPlaced(async (lastBet) => {
     if (stopped) {
@@ -278,14 +278,14 @@ engine.onBetPlaced(async (lastBet) => {
         var wonAmount = lastBet.payout - lastBet.amount;
         runningProfit += wonAmount;
 
-        if (!isSimulatedMode && consecutiveWins >= 2) {
+        if (!isSimulationMode && consecutiveWins >= 2) {
             log('STREAK x' + consecutiveWins + ' +$' + wonAmount.toFixed(2) + ' | Session: $' + runningProfit.toFixed(2) + ' | Cum: $' + (cumProfit + runningProfit).toFixed(2));
         }
     } else {
         losses++;
         runningProfit -= lastBet.amount;
 
-        if (!isSimulatedMode && consecutiveWins >= 3) {
+        if (!isSimulationMode && consecutiveWins >= 3) {
             log('STREAK ENDED at x' + consecutiveWins + ' | Session: $' + runningProfit.toFixed(2));
         }
         consecutiveWins = 0;
@@ -297,7 +297,7 @@ engine.onBetPlaced(async (lastBet) => {
         var newTrail = peakProfit * TRAILING_LOCK;
         if (newTrail > trailingStop) {
             trailingStop = newTrail;
-            if (!isSimulatedMode && trailingStop > 0) {
+            if (!isSimulationMode && trailingStop > 0) {
                 log('TRAIL: Floor $' + trailingStop.toFixed(2) + ' (peak: $' + peakProfit.toFixed(2) + ')');
             }
         }
@@ -329,7 +329,7 @@ engine.onBetPlaced(async (lastBet) => {
 engine.onBettingStopped(function (isManualStop, lastError) {
     playHitSound();
 
-    if (isSimulatedMode && sampleResults.length > 1) {
+    if (isSimulationMode && sampleResults.length > 1) {
         var totalProfit = 0;
         var totalRolls = 0;
         var totalSessions = 0;
@@ -417,7 +417,7 @@ engine.onBettingStopped(function (isManualStop, lastError) {
         log('====================================================================');
     } else {
         log('=== RUN OVER ===');
-        log('Mode: ' + (isSimulatedMode ? 'SIMULATION' : 'LIVE'));
+        log('Mode: ' + (isSimulationMode ? 'SIMULATION' : 'LIVE'));
         log('Meta Exit: ' + (metaExitReason || (isManualStop ? 'MANUAL' : 'UNKNOWN')));
         log('Sessions: ' + sessionCount + ' | Cum P&L: $' + cumProfit.toFixed(2) + ' (' + (cumProfit >= 0 ? '+' : '') + (cumProfit / BANKROLL * 100).toFixed(1) + '%)');
         log('Cum Peak: $' + cumPeakProfit.toFixed(2) + ' | Cum Floor: $' + cumTrailingFloor.toFixed(2));
