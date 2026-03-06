@@ -1,0 +1,179 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - generic "Skip navigation links":
+      - link "Skip to main content" [ref=e4] [cursor=pointer]:
+        - /url: "#main-container"
+    - generic [ref=e8]:
+      - button "Sidebar" [ref=e10] [cursor=pointer]:
+        - img [ref=e11]
+      - link "Antebot Community" [ref=e14] [cursor=pointer]:
+        - /url: /
+        - img "Antebot Community" [ref=e15]
+      - navigation [ref=e16]:
+        - list [ref=e17]:
+          - listitem [ref=e18]:
+            - button "Search" [ref=e19] [cursor=pointer]:
+              - img [ref=e20]
+          - listitem [ref=e21]:
+            - link "Chat" [ref=e22] [cursor=pointer]:
+              - /url: /chat
+              - img [ref=e23]
+          - listitem [ref=e25]:
+            - button "Notifications and account" [ref=e26] [cursor=pointer]
+    - main [ref=e27]:
+      - generic [ref=e28]:
+        - generic [ref=e29]:
+          - generic [ref=e31]:
+            - heading "Dice" [level=1] [ref=e32]:
+              - generic "This topic is closed; it no longer accepts new replies" [ref=e34]:
+                - img [ref=e35]
+              - link "Dice" [ref=e36] [cursor=pointer]:
+                - /url: /t/dice/762
+            - generic [ref=e37]:
+              - link "Guides & Troubleshooting" [ref=e38] [cursor=pointer]:
+                - /url: /c/guides-troubleshooting/4
+                - generic [ref=e39]:
+                  - img [ref=e40]
+                  - generic [ref=e41]: Guides & Troubleshooting
+              - link "Code Mode Documentation" [ref=e42] [cursor=pointer]:
+                - /url: /c/guides-troubleshooting/code-mode-documentation/132
+                - generic "You can find the entire documentation for Antebot Originals Code Mode here." [ref=e43]:
+                  - img [ref=e44]
+                  - img [ref=e45]
+                  - generic [ref=e46]: Code Mode Documentation
+              - list "Tags" [ref=e49]:
+                - link "dice" [ref=e50] [cursor=pointer]:
+                  - /url: /tag/dice/18
+          - generic [ref=e57]:
+            - heading "post by system on Nov 10, 2025" [level=2] [ref=e58]
+            - article "post by system on Nov 10, 2025" [ref=e59]:
+              - generic [ref=e60]:
+                - link "system's profile" [ref=e63] [cursor=pointer]:
+                  - /url: /u/system
+                - generic [ref=e64]:
+                  - generic [ref=e65]:
+                    - link "system's profile" [ref=e68] [cursor=pointer]:
+                      - /url: /u/system
+                      - text: system
+                      - generic "This user is a moderator" [ref=e69]:
+                        - img [ref=e70]
+                    - generic [ref=e71]:
+                      - button "post edit history" [ref=e73] [cursor=pointer]:
+                        - img [ref=e74]
+                        - generic [ref=e75]: "1"
+                      - link "Nov 2025" [ref=e77] [cursor=pointer]:
+                        - /url: /t/dice/762
+                  - generic [ref=e80]:
+                    - generic [ref=e81]:
+                      - heading "Heading linkVariables" [level=2] [ref=e82]:
+                        - link "Heading link":
+                          - /url: "#p-1850-variables-1"
+                        - text: Variables
+                      - list [ref=e83]:
+                        - listitem [ref=e84]:
+                          - code [ref=e85]: betSize
+                          - text: "Type: float"
+                          - text: "Required: true"
+                        - listitem [ref=e86]:
+                          - code [ref=e87]: target
+                          - text: "Type: float"
+                          - text: "Required: true"
+                        - listitem [ref=e88]:
+                          - code [ref=e89]: betHigh
+                          - text: "Type: boolean"
+                          - text: "Required: true"
+                      - heading "Heading linklastBet example" [level=2] [ref=e90]:
+                        - link "Heading link":
+                          - /url: "#p-1850-lastbet-example-2"
+                        - text: lastBet example
+                      - code [ref=e93]:
+                        - text: "{ \"id\": \"XXXX-XXXX-XXXX-XXXX-XXXX\", \"iid\": \"casino:888888888\", \"rollNumber\": 5, \"nonce\": 1027, \"active\":"
+                        - generic [ref=e94]: "false"
+                        - text: ", \"game\": \"dice\", \"win\":"
+                        - generic [ref=e95]: "true"
+                        - text: ", \"amount\": 1, \"fiatAmount\": \"$0.00\", \"payoutMultiplier\": 2, \"b2bMultiplier\": 2, \"payout\": 2, \"fiatPayout\": \"$0.00\", \"currency\": \"eth\", \"dateTime\": \"2022-05-01T00:00:00.000Z\", \"deepLink\": \"https://stake.com/?betId=XXXX-XXXX-XXXX-XXXX-XXXX&modal=bet\", \"state\": { \"result\": 87.54, \"target\": 50.5, \"multiplierTarget\": 2, \"condition\": \"above\" }, \"clientSeed\": \"yourClientSeed\", \"serverSeed\": \"XXX\", // Simulation Mode only \"serverSeedHashed\": \"XXX\" // Live Mode only }"
+                      - heading "Heading linkCode example" [level=2] [ref=e96]:
+                        - link "Heading link":
+                          - /url: "#p-1850-code-example-3"
+                        - text: Code example
+                      - code [ref=e99]:
+                        - text: "// Basic martingale example with stop on loss streak of 10 // resetStats(); // resetSeed(); game = 'dice'; betSize = 0.00000000; // Bet size is always specified in crypto value, not USD! initialBetSize = betSize; betHigh = true; target = chanceToMultiplier(49.5); engine.onBetPlaced(async (lastBet) => { if (currentStreak === -10) { log('Loss streak of 10 reached. Stopping...'); engine.stop(); } if (lastBet.win) { betSize = initialBetSize; } else { betSize *= 2; } }); engine.onBettingStopped("
+                        - generic [ref=e100]: (isManualStop, lastError) =>
+                        - text: "{ playHitSound(); log(`Betting stopped!`); });"
+                    - generic [ref=e101]:
+                      - navigation [ref=e102]:
+                        - generic [ref=e103]:
+                          - generic "Like this post" [ref=e106] [cursor=pointer]:
+                            - button "Like this post":
+                              - img
+                          - button "bookmark this post" [ref=e107] [cursor=pointer]:
+                            - img [ref=e108]
+                      - generic:
+                        - list
+              - button "77 views" [ref=e112] [cursor=pointer]:
+                - generic [ref=e113]: "77"
+                - generic [ref=e114]: views
+          - region "Topic actions" [ref=e119]:
+            - generic [ref=e121]:
+              - button "Share" [ref=e122] [cursor=pointer]:
+                - img [ref=e123]
+                - generic [ref=e124]: Share
+              - button "Bookmark" [ref=e125] [cursor=pointer]:
+                - img [ref=e126]
+                - generic [ref=e127]: Bookmark
+            - paragraph [ref=e129]:
+              - button "Normal" [ref=e130] [cursor=pointer]:
+                - img [ref=e131]
+                - generic [ref=e132]: Normal
+                - img [ref=e133]
+              - generic [ref=e134]: You will be notified if someone mentions your @name or replies to you.
+          - generic [ref=e135]:
+            - complementary "New & Unread Topics" [ref=e137]:
+              - heading "New & Unread Topics" [level=3] [ref=e138]
+              - table "Topic list, column headers with buttons are sortable." [ref=e142]:
+                - caption [ref=e143]: Topic list, column headers with buttons are sortable.
+                - rowgroup [ref=e144]:
+                  - row "Topic Replies Activity" [ref=e145]:
+                    - columnheader "Topic" [ref=e146]:
+                      - generic [ref=e147]: Topic
+                    - columnheader "Replies" [ref=e148]:
+                      - generic [ref=e149]: Replies
+                    - columnheader "Activity" [ref=e150]:
+                      - generic [ref=e151]: Activity
+                - rowgroup [ref=e152]:
+                  - row "Drill Code Mode Documentation Tags 0 replies, jump to first post Dec 2025" [ref=e153]:
+                    - cell "Drill Code Mode Documentation Tags" [ref=e154]:
+                      - heading "Drill" [level=2] [ref=e155]:
+                        - link "Drill" [ref=e156] [cursor=pointer]:
+                          - /url: /t/drill/821
+                      - generic [ref=e157]:
+                        - link "Code Mode Documentation" [ref=e158] [cursor=pointer]:
+                          - /url: /c/guides-troubleshooting/code-mode-documentation/132
+                          - generic "You can find the entire documentation for Antebot Originals Code Mode here." [ref=e159]:
+                            - img [ref=e160]
+                            - img [ref=e161]
+                            - generic [ref=e162]: Code Mode Documentation
+                        - list "Tags" [ref=e163]:
+                          - link "drill" [ref=e164] [cursor=pointer]:
+                            - /url: /tag/drill/84
+                    - cell "0 replies, jump to first post" [ref=e165]:
+                      - link "0 replies, jump to first post" [ref=e166] [cursor=pointer]:
+                        - /url: /t/drill/821/1
+                        - text: "0"
+                    - cell "Dec 2025" [ref=e167]:
+                      - link "Dec 2025" [ref=e168] [cursor=pointer]:
+                        - /url: /t/drill/821/1
+            - heading "There are 4 new topics remaining, or browse other topics in Code Mode Documentation" [level=3] [ref=e169]:
+              - text: There are
+              - link "4 new" [ref=e178] [cursor=pointer]:
+                - /url: /new
+              - text: topics remaining, or browse other topics in
+              - link "Code Mode Documentation" [ref=e179] [cursor=pointer]:
+                - /url: /c/guides-troubleshooting/code-mode-documentation/132
+                - generic "You can find the entire documentation for Antebot Originals Code Mode here." [ref=e180]:
+                  - img [ref=e181]
+                  - img [ref=e182]
+                  - generic [ref=e183]: Code Mode Documentation
+        - dialog "User card"
+  - status [ref=e176]
+  - alert [ref=e177]
