@@ -1,15 +1,13 @@
 // Action-Weighted D'Alembert for Blackjack
 // Source: https://forum.antebot.com/t/perfect-bj-d-alembert-new-approach/887
-// Inspired by swenmustwatchgames0's concept, refined with Vrafasky's insight
-// that unit must equal startBet for D'Alembert to work.
+// Concept by swenmustwatchgames0, bet matrix by ConnorMcLeod/Vrafasky
 //
-// Key innovation: doubles and splits adjust by 2-4 units instead of 1,
-// correctly sizing recovery to match actual money lost/won.
-//
+// Uses manual bet matrix (community standard) instead of built-in function.
+// D'Alembert with action-weighted units: doubles/splits adjust by 2-4 units.
 // Monte Carlo tested: div=2000, cap=10x → 10% bust rate, -$15/session on $1000.
 
 strategyTitle = "BJ D'Alembert AW";
-version = "1.0.0";
+version = "1.1.0";
 author = "swenmustwatchgames0";
 scripter = "stanz";
 
@@ -17,9 +15,6 @@ game = "blackjack";
 
 // USER CONFIG
 // ============================================================
-//
-// Divider: startBet = balance / divider. Unit = startBet.
-// Cap: max bet = startBet * maxBetMultiple.
 //
 //  Divider | Base Bet ($1000) | Bust% (2000 hands) | Mean Net
 // ---------|------------------|---------------------|----------
@@ -29,15 +24,12 @@ game = "blackjack";
 //     5000 | $0.20            |  ~0%                | -$14
 divider = 2000;
 
-maxBetMultiple = 10; // Cap at 10x startBet. Prevents runaway on bad streaks.
+maxBetMultiple = 10;
 
 // Stop conditions. Set 0 to disable.
 stopOnProfit = 0;
 stopOnLoss = 300;
 stopBeforeLoss = 0;
-
-// Seed change on win streak. 0 = disabled.
-seedChangeAfterWinStreak = 8;
 
 // ============================================================
 // DO NOT EDIT BELOW THIS LINE
@@ -55,25 +47,158 @@ unit = startBalance / divider;
 if (unit < 0.001) unit = 0.001;
 maxBet = unit * maxBetMultiple;
 
+if (casino === "SHUFFLE" || casino === "SHUFFLE_US") {
+  sideBetPerfectPairs = 0;
+  sideBet213 = 0;
+}
+
 // State
 currentBet = unit;
-cycleProfit = 0;
-peakProfit = 0;
 handsPlayed = 0;
 totalWins = 0;
 totalLosses = 0;
 totalPushes = 0;
 totalDoubles = 0;
 totalSplits = 0;
-winStreak = 0;
 longestWinStreak = 0;
 longestLossStreak = 0;
+currentWinStreak = 0;
 currentLossStreak = 0;
 stopped = false;
 
 betSize = currentBet;
-sideBetPerfectPairs = 0;
-sideBet213 = 0;
+
+// ============================================================
+// BET MATRIX — Perfect Basic Strategy (ConnorMcLeod/Vrafasky)
+// H=Hit, S=Stand, D=Double or Hit, DS=Double or Stand, P=Split
+// ============================================================
+
+betMatrixReturns = {
+  H: BLACKJACK_HIT,
+  S: BLACKJACK_STAND,
+  P: BLACKJACK_SPLIT,
+  D: BLACKJACK_DOUBLE,
+};
+
+values = {
+  A: 11, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, 9: 9, 10: 10,
+  J: 10, Q: 10, K: 10,
+};
+
+betMatrix = {
+  hard: {
+    4:  { 2:"H", 3:"H", 4:"H", 5:"H", 6:"H", 7:"H", 8:"H", 9:"H", 10:"H", A:"H" },
+    5:  { 2:"H", 3:"H", 4:"H", 5:"H", 6:"H", 7:"H", 8:"H", 9:"H", 10:"H", A:"H" },
+    6:  { 2:"H", 3:"H", 4:"H", 5:"H", 6:"H", 7:"H", 8:"H", 9:"H", 10:"H", A:"H" },
+    7:  { 2:"H", 3:"H", 4:"H", 5:"H", 6:"H", 7:"H", 8:"H", 9:"H", 10:"H", A:"H" },
+    8:  { 2:"H", 3:"H", 4:"H", 5:"H", 6:"H", 7:"H", 8:"H", 9:"H", 10:"H", A:"H" },
+    9:  { 2:"H", 3:"D", 4:"D", 5:"D", 6:"D", 7:"H", 8:"H", 9:"H", 10:"H", A:"H" },
+    10: { 2:"D", 3:"D", 4:"D", 5:"D", 6:"D", 7:"D", 8:"D", 9:"D", 10:"H", A:"H" },
+    11: { 2:"D", 3:"D", 4:"D", 5:"D", 6:"D", 7:"D", 8:"D", 9:"D", 10:"D", A:"H" },
+    12: { 2:"H", 3:"H", 4:"S", 5:"S", 6:"S", 7:"H", 8:"H", 9:"H", 10:"H", A:"H" },
+    13: { 2:"S", 3:"S", 4:"S", 5:"S", 6:"S", 7:"H", 8:"H", 9:"H", 10:"H", A:"H" },
+    14: { 2:"S", 3:"S", 4:"S", 5:"S", 6:"S", 7:"H", 8:"H", 9:"H", 10:"H", A:"H" },
+    15: { 2:"S", 3:"S", 4:"S", 5:"S", 6:"S", 7:"H", 8:"H", 9:"H", 10:"H", A:"H" },
+    16: { 2:"S", 3:"S", 4:"S", 5:"S", 6:"S", 7:"H", 8:"H", 9:"H", 10:"H", A:"H" },
+    17: { 2:"S", 3:"S", 4:"S", 5:"S", 6:"S", 7:"S", 8:"S", 9:"S", 10:"S", A:"S" },
+    18: { 2:"S", 3:"S", 4:"S", 5:"S", 6:"S", 7:"S", 8:"S", 9:"S", 10:"S", A:"S" },
+    19: { 2:"S", 3:"S", 4:"S", 5:"S", 6:"S", 7:"S", 8:"S", 9:"S", 10:"S", A:"S" },
+    20: { 2:"S", 3:"S", 4:"S", 5:"S", 6:"S", 7:"S", 8:"S", 9:"S", 10:"S", A:"S" },
+    21: { 2:"S", 3:"S", 4:"S", 5:"S", 6:"S", 7:"S", 8:"S", 9:"S", 10:"S", A:"S" },
+  },
+  soft: {
+    12: { 2:"H", 3:"H", 4:"H", 5:"D", 6:"D", 7:"H", 8:"H", 9:"H", 10:"H", A:"H" },
+    13: { 2:"H", 3:"H", 4:"H", 5:"H", 6:"D", 7:"H", 8:"H", 9:"H", 10:"H", A:"H" },
+    14: { 2:"H", 3:"H", 4:"H", 5:"D", 6:"D", 7:"H", 8:"H", 9:"H", 10:"H", A:"H" },
+    15: { 2:"H", 3:"H", 4:"H", 5:"D", 6:"D", 7:"H", 8:"H", 9:"H", 10:"H", A:"H" },
+    16: { 2:"H", 3:"H", 4:"D", 5:"D", 6:"D", 7:"H", 8:"H", 9:"H", 10:"H", A:"H" },
+    17: { 2:"H", 3:"D", 4:"D", 5:"D", 6:"D", 7:"H", 8:"H", 9:"H", 10:"H", A:"H" },
+    18: { 2:"S", 3:"DS", 4:"DS", 5:"DS", 6:"DS", 7:"S", 8:"S", 9:"H", 10:"H", A:"H" },
+    19: { 2:"S", 3:"S", 4:"S", 5:"S", 6:"S", 7:"S", 8:"S", 9:"S", 10:"S", A:"S" },
+    20: { 2:"S", 3:"S", 4:"S", 5:"S", 6:"S", 7:"S", 8:"S", 9:"S", 10:"S", A:"S" },
+    21: { 2:"S", 3:"S", 4:"S", 5:"S", 6:"S", 7:"S", 8:"S", 9:"S", 10:"S", A:"S" },
+  },
+  splits: {
+    22:   { 2:"P", 3:"P", 4:"P", 5:"P", 6:"P", 7:"P", 8:"H", 9:"H", 10:"H", A:"H" },
+    33:   { 2:"P", 3:"P", 4:"P", 5:"P", 6:"P", 7:"P", 8:"H", 9:"H", 10:"H", A:"H" },
+    44:   { 2:"H", 3:"H", 4:"H", 5:"P", 6:"P", 7:"H", 8:"H", 9:"H", 10:"H", A:"H" },
+    55:   { 2:"D", 3:"D", 4:"D", 5:"D", 6:"D", 7:"D", 8:"D", 9:"D", 10:"H", A:"H" },
+    66:   { 2:"P", 3:"P", 4:"P", 5:"P", 6:"P", 7:"H", 8:"H", 9:"H", 10:"H", A:"H" },
+    77:   { 2:"P", 3:"P", 4:"P", 5:"P", 6:"P", 7:"P", 8:"H", 9:"H", 10:"H", A:"H" },
+    88:   { 2:"P", 3:"P", 4:"P", 5:"P", 6:"P", 7:"P", 8:"P", 9:"P", 10:"P", A:"P" },
+    99:   { 2:"P", 3:"P", 4:"P", 5:"P", 6:"P", 7:"S", 8:"P", 9:"P", 10:"S", A:"S" },
+    1010: { 2:"S", 3:"S", 4:"S", 5:"S", 6:"S", 7:"S", 8:"S", 9:"S", 10:"S", A:"S" },
+    AA:   { 2:"P", 3:"P", 4:"P", 5:"P", 6:"P", 7:"P", 8:"P", 9:"P", 10:"P", A:"P" },
+  },
+};
+
+// ============================================================
+// GAME ROUND HANDLER — Manual bet matrix with edge case handling
+// ============================================================
+
+engine.onGameRound(function (currentBet, playerHandIndex) {
+  if (stopped) return BLACKJACK_STAND;
+
+  dealerValue = currentBet.state.dealer[0].value === 11
+    ? "A"
+    : currentBet.state.dealer[0].value;
+  player = currentBet.state.player;
+
+  // Check for split opportunity (two identical cards, first hand, 2 cards)
+  if (
+    player.length === 1 &&
+    player[0].cards.length === 2 &&
+    player[0].cards[0].rank === player[0].cards[1].rank
+  ) {
+    splitKey = ["J", "Q", "K"].includes(player[0].cards[0].rank)
+      ? "1010"
+      : "" + player[0].cards[0].rank + player[0].cards[1].rank;
+    nextAction = betMatrixReturns[betMatrix.splits[splitKey][dealerValue]];
+
+    if (nextAction === BLACKJACK_DOUBLE) {
+      betSize *= 2;
+    }
+    return nextAction;
+  }
+
+  // Normal hand — check soft vs hard
+  cards = player[playerHandIndex].cards;
+  handValue = player[playerHandIndex].value;
+  isSoft = cards.some(function (e) { return e.rank === "A"; })
+    && cards.map(function (e) { return values[e.rank]; }).reduce(function (a, b) { return a + b; }, 0) < 21;
+
+  if (isSoft) {
+    matrixAction = betMatrix.soft[handValue][dealerValue];
+  } else {
+    matrixAction = betMatrix.hard[handValue][dealerValue];
+  }
+
+  // Handle DS (double or stand) — if can't double (3+ cards), stand instead
+  if (matrixAction === "DS") {
+    if (cards.length === 2) {
+      nextAction = BLACKJACK_DOUBLE;
+    } else {
+      nextAction = BLACKJACK_STAND;
+    }
+  } else {
+    nextAction = betMatrixReturns[matrixAction];
+  }
+
+  // Can only double on first 2 cards — fallback to hit
+  if (nextAction === BLACKJACK_DOUBLE && cards.length > 2) {
+    nextAction = BLACKJACK_HIT;
+  }
+
+  if (nextAction === BLACKJACK_DOUBLE) {
+    betSize *= 2;
+  }
+
+  return nextAction;
+});
+
+// ============================================================
+// LOGGING
+// ============================================================
 
 function logBanner() {
   log(
@@ -93,22 +218,23 @@ function scriptLog() {
   log("#70FD70", `Balance: $${balance.toFixed(2)} | Unit: $${unit.toFixed(4)} | Bet: $${currentBet.toFixed(4)}`);
   log("#42CAF7", `Bet Multiple: ${(currentBet / unit).toFixed(1)}x / ${maxBetMultiple}x cap`);
   log("#FFDB55", `W/L/P: ${totalWins}/${totalLosses}/${totalPushes} | Doubles: ${totalDoubles} | Splits: ${totalSplits}`);
-  log("#A4FD68", `Profit: $${profit.toFixed(2)} | Win Streak: ${winStreak} | Longest LS: ${longestLossStreak}`);
+  log("#A4FD68", `Profit: $${profit.toFixed(2)} | Win Streak: ${currentWinStreak} | Longest LS: ${longestLossStreak}`);
   log("#FD71FD", `Hands: ${handsPlayed} | Balance: $${balance.toFixed(2)}`);
 }
 
-// Detect action weight from resolved hand
+// ============================================================
+// D'ALEMBERT PROGRESSION — Action-Weighted
+// ============================================================
+
 function getUnitWeight() {
-  // Count total exposure units from the resolved hand
-  // Normal hand = 1 unit, Double = 2, Split = 2 (1 per hand), Split+Double = 4
-  let hands = lastBet.state.player;
-  let totalUnits = 0;
+  hands = lastBet.state.player;
+  totalUnits = 0;
 
-  for (let i = 0; i < hands.length; i++) {
-    let actions = hands[i].actions;
-    let hadDouble = false;
+  for (i = 0; i < hands.length; i++) {
+    actions = hands[i].actions;
+    hadDouble = false;
 
-    for (let j = 0; j < actions.length; j++) {
+    for (j = 0; j < actions.length; j++) {
       if (actions[j] === "double") {
         hadDouble = true;
         break;
@@ -121,44 +247,42 @@ function getUnitWeight() {
   return totalUnits;
 }
 
-// Main strategy logic
 function mainStrategy() {
   handsPlayed++;
 
   if (lastBet.win && lastBet.payoutMultiplier > 1) {
-    // WIN (profitable hand)
+    // WIN
     totalWins++;
-    winStreak++;
+    currentWinStreak++;
     currentLossStreak = 0;
-    if (winStreak > longestWinStreak) longestWinStreak = winStreak;
+    if (currentWinStreak > longestWinStreak) longestWinStreak = currentWinStreak;
 
-    let weight = getUnitWeight();
+    weight = getUnitWeight();
     if (lastBet.state.player.length > 1) totalSplits++;
     if (weight >= 2 && lastBet.state.player.length === 1) totalDoubles++;
 
-    // D'Alembert: decrease by weighted units
-    currentBet -= weight * unit;
-
-    // Seed change on win streak
-    if (seedChangeAfterWinStreak > 0 && winStreak >= seedChangeAfterWinStreak) {
-      resetSeed();
-      log("#FFFF2A", `🔄 Seed reset after ${winStreak} win streak`);
+    // Reset to base if at new profit peak (classic D'Alembert reset)
+    if (profit >= highestProfit) {
+      currentBet = unit;
+    } else {
+      // Decrease by weighted units
+      currentBet -= weight * unit;
     }
   } else if (lastBet.win && lastBet.payoutMultiplier <= 1) {
-    // PUSH — no change to progression
+    // PUSH — keep same bet
     totalPushes++;
   } else {
     // LOSS
     totalLosses++;
     currentLossStreak++;
-    winStreak = 0;
+    currentWinStreak = 0;
     if (currentLossStreak > longestLossStreak) longestLossStreak = currentLossStreak;
 
-    let weight = getUnitWeight();
+    weight = getUnitWeight();
     if (lastBet.state.player.length > 1) totalSplits++;
     if (weight >= 2 && lastBet.state.player.length === 1) totalDoubles++;
 
-    // D'Alembert: increase by weighted units
+    // Increase by weighted units
     currentBet += weight * unit;
   }
 
@@ -166,11 +290,13 @@ function mainStrategy() {
   if (currentBet < unit) currentBet = unit;
   if (currentBet > maxBet) currentBet = maxBet;
 
-  // Set next bet
-  betSize = Math.round(currentBet * 100000000) / 100000000; // 8dp precision
+  betSize = currentBet;
 }
 
-// Stop checks
+// ============================================================
+// STOP CHECKS
+// ============================================================
+
 function stopProfitCheck() {
   if (stopOnProfit > 0 && profit >= stopOnProfit) {
     log("#4FFB4F", `✅ Stopped on $${profit.toFixed(2)} Profit`);
@@ -187,7 +313,7 @@ function stopLossCheck() {
   }
 
   if (stopBeforeLoss > 0) {
-    let worstCase = currentBet * 4; // split + double on both = 4x exposure
+    worstCase = currentBet * 4;
     if (profit - worstCase <= -Math.abs(stopBeforeLoss)) {
       log("#FD6868", `⛔ Stopped to prevent potential $${Math.abs(profit - worstCase).toFixed(2)} Loss`);
       stopped = true;
@@ -196,32 +322,23 @@ function stopLossCheck() {
   }
 }
 
-// Init log
+// ============================================================
+// INIT & MAIN LOOP
+// ============================================================
+
 logBanner();
 log("#70FD70", `Starting balance: $${startBalance.toFixed(2)}`);
 log("#42CAF7", `Unit: $${unit.toFixed(4)} | Max bet: $${maxBet.toFixed(4)} (${maxBetMultiple}x cap)`);
-log("#FD71FD", `⚠️  D'Alembert: +N units on loss, -N units on win (N = 1 normal, 2 double/split, 4 split+double)`);
+log("#FD71FD", `D'Alembert AW: +N units on loss, -N units on win (N = 1 normal, 2 double/split, 4 split+double)`);
+log("#FFDB55", `Reset to base at profit peak | Manual bet matrix (perfect basic strategy)`);
 
-// Main loop
-engine.onBetPlaced(async () => {
+engine.onBetPlaced(async function () {
   if (stopped) return;
 
   mainStrategy();
   scriptLog();
   stopProfitCheck();
   stopLossCheck();
-});
-
-engine.onGameRound(function (currentBet, playerHandIndex) {
-  if (stopped) return BLACKJACK_STAND;
-
-  let nextAction = blackJackPerfectNextAction(currentBet, playerHandIndex, "advanced", "any");
-
-  if (nextAction === BLACKJACK_DOUBLE) {
-    betSize *= 2;
-  }
-
-  return nextAction;
 });
 
 engine.onBettingStopped(function () {
