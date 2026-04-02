@@ -48,6 +48,7 @@ NOT underscore-prefixed: `._win`, `._amount`, `._payout` (seen in some community
 scripts/
   dice/           — Dice strategies (SIEGE is flagship)
   blackjack/      — Blackjack strategies (RAMPART is flagship)
+  roulette/       — Roulette strategies (Profit on Red/Black)
   community/      — Third-party scripts from forum (reference only)
   <game>/_archive — Superseded scripts
 docs/
@@ -61,6 +62,7 @@ docs/
 |--------|------|----------|
 | `scripts/dice/siege.js` | Dice | SIEGE v1.3 — Two-tier (session + meta walk-away), 10%/9.9x, streak escalation, trailing stops, cumulative vault |
 | `scripts/blackjack/rampart.js` | Blackjack | RAMPART v3.0 — 6 betting systems (flat/dalembert/martingale/paroli/oscar/fibonacci), advanced perfect strategy, vault-and-continue |
+| `scripts/roulette/profit-on-redblack.js` | Roulette | Profit on Red/Black v1.3 — 24 big/5 small/8 uncovered numbers, 3.5x IOL, adaptive divider after vault, stopAfterVaults walk-away |
 
 ## Antebot Engine API Quick Reference
 
