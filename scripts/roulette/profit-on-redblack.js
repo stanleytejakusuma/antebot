@@ -1,5 +1,5 @@
 strategyTitle = "Profit on Red/Black";
-version = "1.3.0";
+version = "1.3.1";
 author = "Community";
 scripter = "stanz";
 
@@ -8,18 +8,22 @@ game = "roulette";
 // USER CONFIG — Edit this section
 // ============================================================
 //
-//    Divider | Max LS | P(hitting it)
-// ----------|--------|---------------
-//        17 |   3    | 4.337%
-//        60 |   4    | 1.524%
-//       210 |   5    | 0.535%
-//       735 |   6    | 0.188%
-//     2,574 |   7    | 0.066%
-//     9,008 |   8    | 0.023%
-//    31,526 |   9    | 0.008%
-//   110,342 |  10    | 0.003%
-//   386,197 |  11    | 0.001%
-// 1,351,688 |  12    | 0.0004%
+// Divider determines how many escalating bets you can place in a loss streak.
+// "Bets" = total bets placed before bust. The LAST bet is your recovery shot.
+// e.g. 8 bets = survive 7 losses, 8th is last chance. If all 8 lose, bust.
+//
+//    Divider | Bets | P(all lose = bust)
+// ----------|------|--------------------
+//        17 |   3  | 4.337%
+//        60 |   4  | 1.524%
+//       210 |   5  | 0.535%
+//       735 |   6  | 0.188%
+//     2,574 |   7  | 0.066%
+//     9,008 |   8  | 0.023%
+//    31,526 |   9  | 0.008%
+//   110,342 |  10  | 0.003%
+//   386,197 |  11  | 0.001%
+// 1,351,688 |  12  | 0.0004%
 
 divider = 110342;
 
@@ -142,7 +146,7 @@ function scriptLog() {
   log("#42CAF7", `Current Bet Total: $${currentTotal.toFixed(2)} | Multiplier: ${currentMultiplier.toFixed(2)}x`);
   log("#FFDB55", `Covered: ${coveredCount}/37 | Big: ${bigBetNumbers.length} (1.44x) | Small: ${smallBetNumbers.length} (0.28x) | Uncovered: ${uncoveredNumbers.length}`);
   log("#A4FD68", `W/L: ${totalWins}/${totalLosses} | Current LS: ${lossStreak} | Longest LS: ${longestLossStreak}`);
-  log("#FD71FD", `Max Survivable LS: ${maxSurvivableLosses} | IOL: ${iol}x (${increaseOnLossPercent}%)`);
+  log("#FD71FD", `Max Bets in Streak: ${maxSurvivableLosses} (last bet = recovery shot) | IOL: ${iol}x (${increaseOnLossPercent}%)`);
 
   if (vaultProfitsThreshold > 0) {
     log("#FF7D1F", `Vault Threshold: $${vaultProfitsThreshold} | Vaulted: $${vaulted.toFixed(2)}`);
@@ -239,7 +243,7 @@ log("#42CAF7", `Base bet total: $${totalBetAmount.toFixed(4)} | Small: $${smallB
 log("#FFDB55", `Big numbers (${bigBetNumbers.length}): [${bigBetNumbers.join(", ")}]`);
 log("#FF7D1F", `Small numbers (${smallBetNumbers.length}): [${smallBetNumbers.join(", ")}]`);
 log("#FD6868", `Uncovered (${uncoveredNumbers.length}): [${uncoveredNumbers.join(", ")}]`);
-log("#FD71FD", `⚠️  Max survivable loss streak: ${maxSurvivableLosses} (before bankrupt)`);
+log("#FD71FD", `⚠️  Max bets in streak: ${maxSurvivableLosses} — last bet is recovery shot, if all ${maxSurvivableLosses} lose = bust`);
 
 // Main loop
 engine.onBetPlaced(async () => {
