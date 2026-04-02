@@ -1,6 +1,6 @@
 strategyTitle = "Profit on Red/Black";
-version = "1.3.1";
-author = "Community";
+version = "1.4.0";
+author = "darthvador05";
 scripter = "stanz";
 
 game = "roulette";
@@ -88,6 +88,7 @@ lossStreak = 0;
 longestLossStreak = 0;
 totalWins = 0;
 totalLosses = 0;
+vaultCount = 0;
 lastVaultedProfit = profit;
 stopped = false;
 
@@ -188,7 +189,8 @@ async function vaultHandle() {
   ) {
     let vaultingAmount = profit - lastVaultedProfit;
     await depositToVault(vaultingAmount);
-    log("#4FFB4F", `💰 Vaulted $${vaultingAmount.toFixed(2)} | Total vaulted: $${vaulted.toFixed(2)}`);
+    vaultCount++;
+    log("#4FFB4F", `💰 Vault #${vaultCount} +$${vaultingAmount.toFixed(2)} | Total vaulted: $${vaulted.toFixed(2)}`);
     lastVaultedProfit = profit;
 
     // Recalculate bet sizes from current balance to maintain divider ratio
@@ -258,7 +260,7 @@ engine.onBetPlaced(async () => {
   stopLossCheck();
 });
 
-engine.onBettingStopped((isManualStop) => {
+engine.onBettingStopped(() => {
   playHitSound();
   log(
     "#2AFFCA",
