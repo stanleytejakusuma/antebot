@@ -1,5 +1,5 @@
 strategyTitle = "Profit on Red/Black";
-version = "1.2.0";
+version = "1.3.0";
 author = "Community";
 scripter = "stanz";
 
@@ -44,6 +44,7 @@ vaultProfitsThreshold = 100; // Vault profits when cumulative profit reaches thi
 stopOnProfit = 0; // Stop script at this profit. 0 = disabled.
 stopOnLoss = 0; // Stop script at this loss. 0 = disabled.
 stopBeforeLoss = 0; // Stop if next bet could exceed this loss. 0 = disabled.
+stopAfterVaults = 0; // Stop after this many successful vaults. 0 = disabled.
 
 // ============================================================
 // DO NOT EDIT BELOW THIS LINE
@@ -195,6 +196,13 @@ async function vaultHandle() {
     selection = buildSelection(1);
     maxSurvivableLosses = calcMaxLossStreak();
     log("#42CAF7", `📐 Rebased: $${oldTotal.toFixed(4)} → $${totalBetAmount.toFixed(4)} | Max LS: ${maxSurvivableLosses}`);
+
+    // Walk-away after N vaults
+    if (stopAfterVaults > 0 && vaultCount >= stopAfterVaults) {
+      log("#4FFB4F", `🏁 Target reached: ${vaultCount} vaults ($${vaulted.toFixed(2)}). Stopping.`);
+      stopped = true;
+      engine.stop();
+    }
   }
 }
 
