@@ -39,13 +39,14 @@ capitalizeStreak = 2;   // Enter Paroli after N consecutive wins
 capitalizeMaxBets = 2;  // Max Paroli doublings before returning to recover
 
 // Vault-and-continue. Set 0 to disable.
-vaultProfitsThreshold = 0;
+// Vaults profits when at base bet (safe state). Resets cycle after vault.
+vaultProfitsThreshold = 0; // Set to e.g. 5 for $5 vault intervals on $100 bankroll
 
 // Stop conditions. Set 0 to disable.
 stopOnProfit = 0;
 stopOnLoss = 0;
 stopBeforeLoss = 0;
-stopAfterHands = 500; // Dev mode: stop after N hands. 0 = disabled.
+stopAfterHands = 0; // 0 = uncapped. Set to 500 for dev testing.
 
 // ============================================================
 // DO NOT EDIT BELOW THIS LINE
@@ -238,8 +239,12 @@ function scriptLog() {
   logBanner();
 
   capWinRate = capHands > 0 ? (capWins / capHands * 100).toFixed(0) : "0";
+  maxLS = Math.floor(Math.log(divider) / Math.log(2));
+  runwayBar = mode === "recover" && currentLossStreak > 0
+    ? ` | Runway: LS ${currentLossStreak}/${maxLS}`
+    : "";
   log("#70FD70", `Balance: $${balance.toFixed(2)} | Unit: $${unit.toFixed(4)} | Bet: $${currentBet.toFixed(4)}`);
-  log(modeColor(), `Mode: ${modeLabel()} | LS: ${currentLossStreak} | Bet/Unit: ${(currentBet / unit).toFixed(1)}x`);
+  log(modeColor(), `Mode: ${modeLabel()} | LS: ${currentLossStreak} | Bet/Unit: ${(currentBet / unit).toFixed(1)}x${runwayBar}`);
   log("#FFDB55", `W/L/P: ${totalWins}/${totalLosses}/${totalPushes} | Doubles: ${totalDoubles} | Splits: ${totalSplits}`);
   log("#A4FD68", `Profit: $${profit.toFixed(2)} | Peak: $${peakProfit.toFixed(2)} | Longest LS: ${longestLossStreak} | Longest WS: ${longestWinStreak}`);
   log("#8B949E", `Modes: R:${recoverHands} K:${capHands} | Cap: ${capTriggered}x (W/L: ${capWins}/${capLosses}, ${capWinRate}% WR) | Net: $${capPnL.toFixed(4)}`);
