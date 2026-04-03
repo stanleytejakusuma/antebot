@@ -95,6 +95,12 @@ modeChanges = 0;
 maxBetSeen = unit;
 lossStreakCost = 0;
 biggestRecovery = 0;
+// Enhanced metrics
+currentChainCost = 0;
+recoveryChains = 0;
+totalChainDepth = 0;
+totalWagered = 0;
+totalBlackjacks = 0;
 stopped = false;
 
 betSize = currentBet;
@@ -243,12 +249,21 @@ function scriptLog() {
   runwayBar = mode === "recover" && currentLossStreak > 0
     ? ` | Runway: LS ${currentLossStreak}/${maxLS}`
     : "";
+  chainBar = currentChainCost > 0
+    ? ` | Chain: -$${currentChainCost.toFixed(2)}`
+    : "";
+  drawdown = peakProfit - profit;
+  ddBar = drawdown > 0 ? ` | DD: -$${drawdown.toFixed(2)}` : "";
+  profitRate = handsPlayed > 0 ? (profit / handsPlayed * 100).toFixed(2) : "0.00";
+  avgChainLS = recoveryChains > 0 ? (totalChainDepth / recoveryChains).toFixed(1) : "0";
+  rtp = totalWagered > 0 ? ((totalWagered + profit) / totalWagered * 100).toFixed(2) : "100.00";
   log("#70FD70", `Balance: $${balance.toFixed(2)} | Unit: $${unit.toFixed(4)} | Bet: $${currentBet.toFixed(4)}`);
-  log(modeColor(), `Mode: ${modeLabel()} | LS: ${currentLossStreak} | Bet/Unit: ${(currentBet / unit).toFixed(1)}x${runwayBar}`);
-  log("#FFDB55", `W/L/P: ${totalWins}/${totalLosses}/${totalPushes} | Doubles: ${totalDoubles} | Splits: ${totalSplits}`);
-  log("#A4FD68", `Profit: $${profit.toFixed(2)} | Peak: $${peakProfit.toFixed(2)} | Longest LS: ${longestLossStreak} | Longest WS: ${longestWinStreak}`);
-  log("#8B949E", `Modes: R:${recoverHands} K:${capHands} | Cap: ${capTriggered}x (W/L: ${capWins}/${capLosses}, ${capWinRate}% WR) | Net: $${capPnL.toFixed(4)}`);
-  log("#FD71FD", `Hands: ${handsPlayed} | Max Bet: $${maxBetSeen.toFixed(4)} | Biggest Recovery: $${biggestRecovery.toFixed(4)} | Vaults: ${vaultCount}`);
+  log(modeColor(), `Mode: ${modeLabel()} | LS: ${currentLossStreak} | Bet/Unit: ${(currentBet / unit).toFixed(1)}x${runwayBar}${chainBar}`);
+  log("#A4FD68", `Profit: $${profit.toFixed(2)} | Peak: $${peakProfit.toFixed(2)}${ddBar} | Rate: $${profitRate}/100h`);
+  log("#FFDB55", `W/L/P: ${totalWins}/${totalLosses}/${totalPushes} | BJ: ${totalBlackjacks} | Doubles: ${totalDoubles} | Splits: ${totalSplits}`);
+  log("#42CAF7", `RTP: ${rtp}% | Wagered: $${totalWagered.toFixed(2)} (${(totalWagered / startBalance).toFixed(1)}x) | Recoveries: ${recoveryChains} (avg LS ${avgChainLS})`);
+  log("#8B949E", `Cap: ${capTriggered}x (W/L: ${capWins}/${capLosses}, ${capWinRate}% WR) Net: $${capPnL.toFixed(4)} | Max Bet: $${maxBetSeen.toFixed(2)}`);
+  log("#FD71FD", `Hands: ${handsPlayed} | Biggest Recovery: $${biggestRecovery.toFixed(2)} | Switches: ${modeChanges} | Vaults: ${vaultCount}`);
 }
 
 // ============================================================
@@ -259,6 +274,7 @@ function mainStrategy() {
   handsPlayed++;
 
   handPnL = lastBet.payout - lastBet.amount;
+  totalWagered += lastBet.amount;
 
   // Track doubles/splits
   playerHands = lastBet.state.player;
@@ -268,6 +284,11 @@ function mainStrategy() {
     for (j = 0; j < handActions.length; j++) {
       if (handActions[j] === "double") { totalDoubles++; break; }
     }
+  }
+
+  // Blackjack detection (2 cards, 2.5x multiplier)
+  if (lastBet.payoutMultiplier >= 2.4 && lastBet.state.player[0].cards.length === 2) {
+    totalBlackjacks++;
   }
 
   // Result tracking
@@ -300,6 +321,12 @@ function mainStrategy() {
       // WIN — recovery complete, reset to base
       recoveredAmount = currentBet;
       if (recoveredAmount > biggestRecovery) biggestRecovery = recoveredAmount;
+      // Track chain stats
+      if (currentChainCost > 0) {
+        recoveryChains++;
+        totalChainDepth += currentLossStreak;
+      }
+      currentChainCost = 0;
       currentBet = unit;
 
       // Check capitalize trigger
@@ -310,6 +337,7 @@ function mainStrategy() {
       }
     } else if (!lastBet.win) {
       // LOSS — Martingale: double the bet
+      currentChainCost += lastBet.amount;
       currentBet = currentBet * 2;
     }
     // push: no change
@@ -443,13 +471,16 @@ function logSummary() {
 ================================`
   );
   log(`Hands: ${handsPlayed} | W/L/P: ${totalWins}/${totalLosses}/${totalPushes}`);
-  log(`Doubles: ${totalDoubles} | Splits: ${totalSplits}`);
+  log(`BJ: ${totalBlackjacks} | Doubles: ${totalDoubles} | Splits: ${totalSplits}`);
+  avgChainFinal = recoveryChains > 0 ? (totalChainDepth / recoveryChains).toFixed(1) : "0";
+  rtpFinal = totalWagered > 0 ? ((totalWagered + profit) / totalWagered * 100).toFixed(2) : "100.00";
   log(`Profit: $${profit.toFixed(2)} | Peak: $${peakProfit.toFixed(2)} | Vaults: ${vaultCount}`);
   log(`Longest LS: ${longestLossStreak} | Longest WS: ${longestWinStreak}`);
-  log(`Max Bet: $${maxBetSeen.toFixed(4)} | Biggest Recovery: $${biggestRecovery.toFixed(4)}`);
-  log(`Final bet: $${currentBet.toFixed(4)} (${(currentBet / unit).toFixed(1)}x) | Balance: $${balance.toFixed(2)}`);
+  log(`RTP: ${rtpFinal}% | Wagered: $${totalWagered.toFixed(2)} (${(totalWagered / startBalance).toFixed(1)}x)`);
+  log(`Max Bet: $${maxBetSeen.toFixed(2)} | Biggest Recovery: $${biggestRecovery.toFixed(2)} | Recoveries: ${recoveryChains} (avg LS ${avgChainFinal})`);
+  log(`Final bet: $${currentBet.toFixed(2)} (${(currentBet / unit).toFixed(1)}x) | Balance: $${balance.toFixed(2)}`);
   log("#8B949E", `Mode Split: RECOVER ${recoverHands} (${recPct}%) | CAPITALIZE ${capHands} (${capPct}%)`);
-  log("#8B949E", `Cap Triggers: ${capTriggered} | Cap W/L: ${capWins}/${capLosses} (${capWinRate}% WR) | Cap Net: $${capPnL.toFixed(4)} | Switches: ${modeChanges}`);
+  log("#8B949E", `Cap: ${capTriggered}x | W/L: ${capWins}/${capLosses} (${capWinRateFinal}% WR) | Net: $${capPnL.toFixed(4)} | Switches: ${modeChanges}`);
 }
 
 engine.onBettingStopped(function () {
