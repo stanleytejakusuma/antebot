@@ -68,6 +68,7 @@ docs/
 | `scripts/blackjack/oscars-grind.js` | Blackjack | Oscar's Grind v1.0 — +1u after win only in deficit, cycle goal +1u, #1 median (+$28), 19.8% bust |
 | `scripts/blackjack/oscars-paroli.js` | Blackjack | Oscar's Paroli v1.0 — Oscar's Grind + Paroli capitalize, +$112 median (x20), 32% bust, 60% win rate |
 | `scripts/blackjack/martingale-paroli.js` | Blackjack | Mart+Paroli v1.0 — Martingale 2x + Paroli capitalize, +$163 median (div=6k), beats roulette R/B, 31.5% bust |
+| `scripts/blackjack/viper.js` | Blackjack | VIPER v2.0 — Strike (Mart 2x) + Coil (flat brake) + Capitalize (Paroli), brake@8 limits catastrophic exposure, 3.9% bust |
 | `scripts/tools/dalembert-simulator.py` | Python | Monte Carlo simulator for BJ/baccarat D'Alembert parameter optimization |
 
 ## Antebot Engine API Quick Reference
