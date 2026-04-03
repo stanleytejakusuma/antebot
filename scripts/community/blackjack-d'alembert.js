@@ -20,10 +20,6 @@ stopOnProfit = 0; // stop if this profit reached
 stopBeforeLoss = 0; // stop if next bet can go over this amount
 stopOnLoss = 0; // stop if this loss exceeded.
 
-// Seed Reset Configuration. Set 0 to disable
-// Fibonacci values >1000: 1597, 2584, 4181, 6765, 10946, 17711, 28657, 46368, 75025
-resetSeedAfterRolls = 0; // reset seed every N hands
-
 // DO NOT EDIT BELOW
 //vault init
 lastVaultedProfit = profit;
@@ -560,7 +556,6 @@ startProfit = profit;
 engine.onBetPlaced(async (lastBet) => {
   stopProfitCheck();
   await vaultHandle();
-  seedResetCheck();
 
   prevLoss = lastBet.amount - lastBet.payout;
 
@@ -655,12 +650,6 @@ function stopLossCheck() {
     potentialLoss,
     "Loss",
   );
-}
-
-function seedResetCheck() {
-  if (resetSeedAfterRolls && rollNumber % resetSeedAfterRolls === 0) {
-    resetSeed();
-  }
 }
 
 async function vaultHandle() {
