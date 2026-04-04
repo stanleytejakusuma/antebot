@@ -513,7 +513,10 @@ engine.onBetPlaced(async function () {
   }
 });
 
+summaryPrinted = false;
 function logSummary() {
+  if (summaryPrinted) return;
+  summaryPrinted = true;
   playHitSound();
   strikePct = handsPlayed > 0 ? (strikeHands / handsPlayed * 100).toFixed(1) : "0";
   coilPct = handsPlayed > 0 ? (coilHandsTotal / handsPlayed * 100).toFixed(1) : "0";
