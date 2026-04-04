@@ -108,6 +108,7 @@ recoveryChains = 0;
 totalWagered = 0;
 coilActivations = 0;
 totalVaulted = 0;
+profitAtLastVault = 0;
 vaultCount = 0;
 stopped = false;
 
@@ -276,9 +277,10 @@ function scriptLog() {
 
   log("#70FD70", `Balance: $${balance.toFixed(2)} | Unit: $${unit.toFixed(4)} | Bet: $${currentBet.toFixed(4)}`);
   log(modeColor(), `Mode: ${modeLabel()} | LS: ${currentLossStreak} | ${(currentBet / unit).toFixed(1)}x${modeStatus}`);
-  sessionTotal = totalVaulted + profit;
+  sessionTotal = profit; // profit IS the total session P&L (includes vaulted amounts in Antebot's accounting)
+  currentProfit = profit - profitAtLastVault; // profit since last vault
   vaultBar = totalVaulted > 0 ? ` | Vaulted: $${totalVaulted.toFixed(2)} (${vaultCount}x)` : "";
-  targetBar = stopOnTotalProfit > 0 ? ` | Target: $${sessionTotal.toFixed(2)}/$${stopOnTotalProfit.toFixed(2)}` : "";
+  targetBar = stopOnTotalProfit > 0 ? ` | Target: $${profit.toFixed(2)}/$${stopOnTotalProfit.toFixed(2)}` : "";
   log("#A4FD68", `Profit: $${profit.toFixed(2)} | Peak: $${peakProfit.toFixed(2)}${ddBar}${vaultBar}${targetBar}`);
   log("#FFDB55", `W/L/P: ${totalWins}/${totalLosses}/${totalPushes} | BJ: ${totalBlackjacks} | Dbl: ${totalDoubles} | Spl: ${totalSplits}`);
   log("#42CAF7", `RTP: ${rtp}% | Wagered: $${totalWagered.toFixed(2)} (${(totalWagered / startBalance).toFixed(1)}x) | Recoveries: ${recoveryChains}`);
@@ -432,15 +434,20 @@ function mainStrategy() {
 // ============================================================
 
 async function vaultHandle() {
+  // profit is Antebot's cumulative session P&L (never resets)
+  // currentProfit = profit since last vault
+  currentProfit = profit - profitAtLastVault;
+
   if (
     vaultProfitsThreshold > 0 &&
     mode === "strike" &&
     currentBet <= unit * 1.01 &&
-    profit >= vaultProfitsThreshold
+    currentProfit >= vaultProfitsThreshold
   ) {
-    vaultAmount = profit;
+    vaultAmount = currentProfit;
     await depositToVault(vaultAmount);
     totalVaulted += vaultAmount;
+    profitAtLastVault = profit; // Mark this profit level as vaulted
     vaultCount++;
     log("#4FFB4F", `Vaulted $${vaultAmount.toFixed(2)} | Total vaulted: $${totalVaulted.toFixed(2)}`);
 
@@ -455,11 +462,9 @@ async function vaultHandle() {
 }
 
 function stopProfitCheck() {
-  // Total profit = vaulted + current
-  sessionTotal = totalVaulted + profit;
-
-  if (stopOnTotalProfit > 0 && sessionTotal >= stopOnTotalProfit && currentBet <= unit * 1.01) {
-    log("#4FFB4F", `Target reached! Total: $${sessionTotal.toFixed(2)} (Vaulted: $${totalVaulted.toFixed(2)} + Current: $${profit.toFixed(2)})`);
+  // profit = Antebot's cumulative session P&L (already includes vaulted)
+  if (stopOnTotalProfit > 0 && profit >= stopOnTotalProfit && currentBet <= unit * 1.01) {
+    log("#4FFB4F", `Target reached! Profit: $${profit.toFixed(2)} (Vaulted: $${totalVaulted.toFixed(2)} + Current: $${(profit - profitAtLastVault).toFixed(2)})`);
     stopped = true;
     logSummary();
     engine.stop();
