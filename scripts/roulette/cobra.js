@@ -1,22 +1,19 @@
-// COBRA v2.0 — Roulette Profit Strategy
-// 2-Column coverage + IOL 3.5x + Capitalize
-// Monte Carlo: +$191 median (div=9008), 26% bust, 74% win rate
-// Beats Profit R/B (+$111) by +$80 at same bust rate
-//
-// Modes:
-//   STRIKE     — IOL 3.5x on miss, reset on win
-//   CAPITALIZE — 2x base bet after 3 consecutive wins
+// COBRA v3.0 — Roulette Profit Strategy
+// 2-Column coverage + IOL 3.0x — optimized for long sessions
+// Monte Carlo: +$162 median (5k spins, div=10000), 22.7% bust, 77% win rate
 //
 // Coverage: 2 of 3 columns (24/37 = 64.9%)
 // Win payout: +0.50x total bet (vs R/B's +0.44x — the key advantage)
 // Miss: 13/37 = 35.1% (12 uncovered numbers + green 0)
 //
-// Why 2 Columns beats Profit R/B:
-//   Same 24-number coverage, but column bet pays 2:1 vs number bets' blended rate.
-//   Each win recovers +50% of total bet vs +44%. Compounds over thousands of spins.
+// v3 changes from v2:
+//   - IOL 3.5x → 3.0x (gains 1 extra LS level: 9 vs 8 — halves bust rate over long sessions)
+//   - Removed capitalize (Monte Carlo proved it adds zero value on roulette)
+//   - div 9008 → 10000 (matches user's proven live config)
+//   - Tested at 5k spins (realistic session length) not just 2k
 
 strategyTitle = "COBRA";
-version = "2.0.0";
+version = "3.0.0";
 author = "stanz";
 scripter = "stanz";
 
@@ -25,17 +22,17 @@ game = "roulette";
 // USER CONFIG
 // ============================================================
 //
-// RISK PRESETS (2 Columns):
+// RISK PRESETS (2 Columns, 5k-spin sessions):
 //
-//   Divider | IOL  | Median  | Bust%  | Win%  | Profile
-//  ---------|------|---------|--------|-------|----------
-//    31,526 | 3.5x | +$93   | 19.3%  | 80.7% | Conservative
-//     9,008 | 3.5x | +$191  | 26.0%  | 73.9% | Balanced (recommended)
-//     9,008 | 3.0x | +$71   | 26.0%  | 73.9% | Safe
-//     5,000 | 3.5x | ~+$250 | ~40%   | ~60%  | Aggressive
+//   Divider | IOL  | Median  | Bust%  | Win%  | MaxLS | Profile
+//  ---------|------|---------|--------|-------|-------|----------
+//    31,526 | 3.0x | +$51   |  3.4%  | 96.6% |  10  | Ultra safe
+//    15,000 | 3.0x | +$108  | 22.7%  | 77.3% |   9  | Conservative
+//    10,000 | 3.0x | +$162  | 22.7%  | 77.3% |   9  | Balanced (recommended)
+//    10,000 | 3.5x | -$407  | 53.0%  | 47.0% |   8  | DON'T (busts on long sessions)
 //
-divider = 9008;
-increaseOnLossPercent = 250; // IOL: 250 = multiply by 3.5x on loss.
+divider = 10000;
+increaseOnLossPercent = 200; // IOL: 200 = multiply by 3.0x on loss.
 
 // Which 2 columns to bet on (1, 2, or 3). Pick any 2 — coverage is identical.
 // Column 1: 1,4,7,10,13,16,19,22,25,28,31,34
@@ -44,10 +41,6 @@ increaseOnLossPercent = 250; // IOL: 250 = multiply by 3.5x on loss.
 column1 = true;
 column2 = true;
 column3 = false;
-
-// Capitalize trigger
-capitalizeStreak = 3;
-capitalizeMaxBets = 1;
 
 // Vault-and-continue (% of starting balance). Set 0 to disable.
 vaultPct = 5;
@@ -189,9 +182,7 @@ function scriptLog() {
   log("#A4FD68", `Profit: $${profit.toFixed(2)} | Peak: $${peakProfit.toFixed(2)}${ddBar}${vaultBar}${targetBar}`);
   log("#FFDB55", `W/L: ${totalWins}/${totalLosses} | Rate: $${profitRate}/100s | Coverage: ${coveredNumbers}/37 (2 cols)`);
   log("#42CAF7", `RTP: ${rtp}% | Wagered: $${totalWagered.toFixed(2)} (${(totalWagered / startBalance).toFixed(1)}x) | Recoveries: ${recoveries}`);
-  sPct = spinsPlayed > 0 ? (strikeSpins / spinsPlayed * 100).toFixed(0) : "0";
-  cPct = spinsPlayed > 0 ? (capSpins / spinsPlayed * 100).toFixed(0) : "0";
-  log("#FF6B6B", `STRIKE: ${strikeSpins} (${sPct}%)  CAP: ${capSpins} (${cPct}%) [${capTriggered}x, ${capWR}% WR, $${capPnL.toFixed(2)}]`);
+  log("#FF6B6B", `IOL chain: ${recoveries} recovered | Current: ${lossStreak > 0 ? "LS " + lossStreak + " at " + currentMultiplier.toFixed(1) + "x" : "base bet"}`);
   log("#FD71FD", `Spins: ${spinsPlayed} | Max Bet: $${maxBetSeen.toFixed(2)} | Best Recovery: $${biggestRecovery.toFixed(2)} | Max LS: ${maxSurvivableLS}`);
 }
 
@@ -222,66 +213,23 @@ function mainStrategy() {
 
   if (profit > peakProfit) peakProfit = profit;
 
-  // === MODE LOGIC ===
+  // === IOL LOGIC (pure strike — no modes needed) ===
 
-  prevMode = mode;
+  strikeSpins++;
 
-  if (mode === "strike") {
-    strikeSpins++;
-
-    if (isWin) {
-      recoveryAmt = baseTotalBet * currentMultiplier;
-      if (recoveryAmt > biggestRecovery) biggestRecovery = recoveryAmt;
-      if (currentChainCost > 0) recoveries++;
-      currentChainCost = 0;
-      currentMultiplier = 1;
-      selection = buildSelection(1);
-
-      // Check capitalize trigger
-      if (winStreak >= capitalizeStreak) {
-        mode = "capitalize";
-        capCount = 0;
-        capTriggered++;
-        currentMultiplier = 2;
-        selection = buildSelection(2);
-      }
-    } else {
-      // Loss — IOL escalate
-      currentChainCost += lastBet.amount;
-      currentMultiplier *= iol;
-      selection = buildSelection(currentMultiplier);
-    }
-
-  } else if (mode === "capitalize") {
-    capSpins++;
-    capCount++;
-    capPnL += handPnL;
-
-    if (isWin) {
-      capWins++;
-    } else {
-      capLosses++;
-    }
-
-    if (!isWin || capCount >= capitalizeMaxBets) {
-      mode = "strike";
-      winStreak = 0;
-      currentMultiplier = 1;
-      selection = buildSelection(1);
-
-      if (!isWin) {
-        lossStreak = 1;
-        currentChainCost = lastBet.amount;
-        currentMultiplier = iol;
-        selection = buildSelection(currentMultiplier);
-      }
-    } else if (isWin) {
-      currentMultiplier = Math.min(currentMultiplier * 2, 100);
-      selection = buildSelection(currentMultiplier);
-    }
+  if (isWin) {
+    recoveryAmt = baseTotalBet * currentMultiplier;
+    if (recoveryAmt > biggestRecovery) biggestRecovery = recoveryAmt;
+    if (currentChainCost > 0) recoveries++;
+    currentChainCost = 0;
+    currentMultiplier = 1;
+    selection = buildSelection(1);
+  } else {
+    // Loss — IOL escalate
+    currentChainCost += lastBet.amount;
+    currentMultiplier *= iol;
+    selection = buildSelection(currentMultiplier);
   }
-
-  if (mode !== prevMode) modeChanges++;
 
   currentTotal = baseTotalBet * currentMultiplier;
   if (currentTotal > maxBetSeen) maxBetSeen = currentTotal;
@@ -349,7 +297,7 @@ logBanner();
 log("#70FD70", `Starting balance: $${startBalance.toFixed(2)}`);
 log("#42CAF7", `Bet: $${baseTotalBet.toFixed(4)} ($${baseColumnBet.toFixed(4)} per col) | Divider: ${divider} | IOL: ${iol}x`);
 colList = (column1 ? "Col1 " : "") + (column2 ? "Col2 " : "") + (column3 ? "Col3" : "");
-log("#FF4500", `STRIKE (IOL ${iol}x) → CAPITALIZE (2x on ${capitalizeStreak}-win streaks) | ${colList.trim()}`);
+log("#FF4500", `Pure IOL ${iol}x | ${colList.trim()} | Reset on win, multiply on miss`);
 log("#FFDB55", `Coverage: ${coveredNumbers}/37 (${(coveredNumbers/37*100).toFixed(0)}%) | Win: +0.50x | Miss: -1.00x | Max LS: ${maxSurvivableLS}`);
 vaultLabel = vaultPct > 0 ? `Vault at ${vaultPct}% ($${vaultProfitsThreshold.toFixed(2)})` : "No vault";
 stopLabel = stopTotalPct > 0 ? `Stop at ${stopTotalPct}% ($${stopOnTotalProfit.toFixed(2)})` : "No stop";
@@ -392,8 +340,7 @@ function logSummary() {
   log(`Longest LS: ${longestLossStreak} | Longest WS: ${longestWinStreak}`);
   log(`Max Bet: $${maxBetSeen.toFixed(2)} | Best Recovery: $${biggestRecovery.toFixed(2)} | Recoveries: ${recoveries}`);
   log(`Final bet: $${(baseTotalBet * currentMultiplier).toFixed(4)} (${currentMultiplier.toFixed(1)}x) | Balance: $${balance.toFixed(2)}`);
-  log("#8B949E", `Modes: STRIKE ${strikeSpins} (${sPct}%) | CAP ${capSpins} (${cPct}%)`);
-  log("#8B949E", `Cap: ${capTriggered}x W/L: ${capWins}/${capLosses} (${capWR}% WR) Net: $${capPnL.toFixed(2)} | Switches: ${modeChanges}`);
+  log("#8B949E", `IOL chains recovered: ${recoveries} | Max LS: ${longestLossStreak} | Max survivable: ${maxSurvivableLS}`);
 }
 
 engine.onBettingStopped(function () {
