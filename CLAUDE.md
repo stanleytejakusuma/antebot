@@ -63,6 +63,7 @@ docs/
 | `scripts/dice/siege.js` | Dice | SIEGE v1.3 — Two-tier (session + meta walk-away), 10%/9.9x, streak escalation, trailing stops, cumulative vault |
 | `scripts/blackjack/rampart.js` | Blackjack | RAMPART v3.0 — 6 betting systems (flat/dalembert/martingale/paroli/oscar/fibonacci), advanced perfect strategy, vault-and-continue |
 | `scripts/roulette/profit-on-redblack.js` | Roulette | Profit on Red/Black v1.4 — 24 big/5 small/8 uncovered numbers, 3.5x IOL, adaptive divider after vault, stopAfterVaults walk-away |
+| `scripts/roulette/cobra.js` | Roulette | COBRA v1.0 — Profit R/B coverage + IOL 4.0x + Capitalize, +$174 median (div=9k), beats R/B baseline |
 | `scripts/blackjack/dalembert-aw.js` | Blackjack | D'Alembert AW v1.1 — Action-weighted units (1/2/4 for normal/double/split), manual bet matrix, 10x cap, peak profit reset |
 | `scripts/blackjack/momentum-shift.js` | Blackjack | Momentum Shift v1.0 — Three-mode regime (cruise/recovery/capitalize), rec=8/3 optimized median +$29, 8.2% bust, vault-and-continue |
 | `scripts/blackjack/oscars-grind.js` | Blackjack | Oscar's Grind v1.0 — +1u after win only in deficit, cycle goal +1u, #1 median (+$28), 19.8% bust |
