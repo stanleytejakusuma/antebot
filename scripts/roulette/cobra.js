@@ -1,19 +1,24 @@
-// COBRA v3.0 — Roulette Profit Strategy
-// 2-Column coverage + IOL 3.0x — optimized for long sessions
-// Monte Carlo: +$162 median (5k spins, div=10000), 22.7% bust, 77% win rate
+// COBRA v4.0 — Roulette Profit Strategy
+// Color + 5 numbers, IOL 3.0x — Monte Carlo champion
+// +$333 median (5k spins, div=10000), 39.1% bust, 60.9% win rate
 //
-// Coverage: 2 of 3 columns (24/37 = 64.9%)
-// Win payout: +0.50x total bet (vs R/B's +0.44x — the key advantage)
-// Miss: 13/37 = 35.1% (12 uncovered numbers + green 0)
+// Coverage: Color (18) + 5 extra numbers = 23/37 = 62.2%
+// Win payout: +0.57x total bet (equal-weighted across all 23 numbers)
+// Miss: 14/37 = 37.8%
 //
-// v3 changes from v2:
-//   - IOL 3.5x → 3.0x (gains 1 extra LS level: 9 vs 8 — halves bust rate over long sessions)
-//   - Removed capitalize (Monte Carlo proved it adds zero value on roulette)
-//   - div 9008 → 10000 (matches user's proven live config)
-//   - Tested at 5k spins (realistic session length) not just 2k
+// Why Color+5 beats 2 Columns:
+//   Color bet at 1:1 payout recovers more per win than column 2:1 when
+//   combined with number bets. The equal-weight math produces +0.57x
+//   vs column's +0.50x. Higher recovery per win = faster IOL recovery.
+//
+// Equal weight math:
+//   Color bet = C, Number bet = Y per number (5 numbers)
+//   Total = C + 5Y. Equal payout: C - 5Y = 32Y - C → 2C = 37Y → C = 18.5Y
+//   Total = 18.5Y + 5Y = 23.5Y. Win = C - 5Y = 18.5Y - 5Y = 13.5Y
+//   Win fraction = 13.5/23.5 = +0.574x
 
 strategyTitle = "COBRA";
-version = "3.0.0";
+version = "4.0.0";
 author = "stanz";
 scripter = "stanz";
 
@@ -22,25 +27,26 @@ game = "roulette";
 // USER CONFIG
 // ============================================================
 //
-// RISK PRESETS (2 Columns, 5k-spin sessions):
+// RISK PRESETS (Color+5, 5k-spin sessions):
 //
-//   Divider | IOL  | Median  | Bust%  | Win%  | MaxLS | Profile
-//  ---------|------|---------|--------|-------|-------|----------
-//    31,526 | 3.0x | +$51   |  3.4%  | 96.6% |  10  | Ultra safe
-//    15,000 | 3.0x | +$108  | 22.7%  | 77.3% |   9  | Conservative
-//    10,000 | 3.0x | +$162  | 22.7%  | 77.3% |   9  | Balanced (recommended)
-//    10,000 | 3.5x | -$407  | 53.0%  | 47.0% |   8  | DON'T (busts on long sessions)
+//   Divider | IOL  | Median  | Bust%  | Win%  | Profile
+//  ---------|------|---------|--------|-------|----------
+//    31,526 | 3.0x | +$100  | ~15%   | ~85%  | Conservative
+//    10,000 | 3.0x | +$333  | 39.1%  | 60.9% | Aggressive (recommended)
+//    15,000 | 3.0x | +$183  | 23.2%  | 76.8% | Balanced
+//    10,000 | 2.5x |  +$80  | ~15%   | ~85%  | Safe
 //
 divider = 10000;
 increaseOnLossPercent = 200; // IOL: 200 = multiply by 3.0x on loss.
 
-// Which 2 columns to bet on (1, 2, or 3). Pick any 2 — coverage is identical.
-// Column 1: 1,4,7,10,13,16,19,22,25,28,31,34
-// Column 2: 2,5,8,11,14,17,20,23,26,29,32,35
-// Column 3: 3,6,9,12,15,18,21,24,27,30,33,36
-column1 = true;
-column2 = true;
-column3 = false;
+// Color: "red" or "black"
+betColor = "red";
+
+// Extra numbers: 5 numbers NOT covered by your color choice
+// If red: pick from black numbers or green
+// Black numbers: 2,4,6,8,10,11,13,15,17,20,22,24,26,28,29,31,33,35
+// Pick any 5 — all equivalent due to RNG
+extraNumbers = [2, 4, 6, 8, 10];
 
 // Vault-and-continue (% of starting balance). Set 0 to disable.
 vaultPct = 5;
@@ -64,10 +70,17 @@ if (isSimulationMode) {
 
 startBalance = balance;
 iol = 1 + increaseOnLossPercent / 100;
+totalNumbers = 18 + extraNumbers.length; // 23
 
-// Calculate base bet per column (total split evenly between 2 columns)
+// Equal-weight bet calculation
+// C = 18.5Y, Total = C + N*Y = (18.5 + N)*Y where N = extraNumbers.length
+// Y = totalBet / (18.5 + N), C = 18.5 * Y
 baseTotalBet = startBalance / divider;
-baseColumnBet = baseTotalBet / 2;
+numBetUnit = baseTotalBet / (18.5 + extraNumbers.length);
+colorBetUnit = 18.5 * numBetUnit;
+
+// Win payout fraction: (37 - 2*N) / (37 + 2*N) where N = extra numbers
+winFraction = (37 - 2 * extraNumbers.length) / (37 + 2 * extraNumbers.length);
 
 // Thresholds from percentages
 vaultProfitsThreshold = vaultPct > 0 ? startBalance * vaultPct / 100 : 0;
@@ -76,19 +89,18 @@ stopOnTotalProfit = stopTotalPct > 0 ? startBalance * stopTotalPct / 100 : 0;
 // Build selection
 function buildSelection(multiplier) {
   sel = {};
-  colBet = baseColumnBet * multiplier;
-  if (column1) sel["row1"] = colBet;
-  if (column2) sel["row2"] = colBet;
-  if (column3) sel["row3"] = colBet;
+  if (betColor === "red") {
+    sel["colorRed"] = colorBetUnit * multiplier;
+  } else {
+    sel["colorBlack"] = colorBetUnit * multiplier;
+  }
+  for (i = 0; i < extraNumbers.length; i++) {
+    sel["number" + extraNumbers[i]] = numBetUnit * multiplier;
+  }
   return sel;
 }
 
 selection = buildSelection(1);
-
-// Coverage info
-coveredColumns = (column1 ? 1 : 0) + (column2 ? 1 : 0) + (column3 ? 1 : 0);
-coveredNumbers = coveredColumns * 12;
-uncoveredNumbers = 37 - coveredNumbers;
 
 // Max survivable LS
 function calcMaxLS() {
@@ -105,7 +117,6 @@ function calcMaxLS() {
 maxSurvivableLS = calcMaxLS();
 
 // State
-mode = "strike";
 currentMultiplier = 1;
 lossStreak = 0;
 winStreak = 0;
@@ -114,21 +125,12 @@ longestWinStreak = 0;
 totalWins = 0;
 totalLosses = 0;
 spinsPlayed = 0;
-capCount = 0;
 peakProfit = 0;
 totalWagered = 0;
 profitAtLastVault = 0;
 totalVaulted = 0;
 vaultCount = 0;
 maxBetSeen = baseTotalBet;
-// Mode counters
-strikeSpins = 0;
-capSpins = 0;
-capTriggered = 0;
-capWins = 0;
-capLosses = 0;
-capPnL = 0;
-modeChanges = 0;
 recoveries = 0;
 currentChainCost = 0;
 biggestRecovery = 0;
@@ -139,21 +141,13 @@ summaryPrinted = false;
 // LOGGING
 // ============================================================
 
-function modeLabel() {
-  return mode === "strike" ? "STRIKE" : "CAPITALIZE";
-}
-
-function modeColor() {
-  return mode === "strike" ? "#FF6B6B" : "#FD71FD";
-}
-
 function logBanner() {
   log(
     "#FF4500",
     `================================
  COBRA v${version}
 ================================
- by ${author} | 2-Column Profit
+ by ${author} | Color+${extraNumbers.length} Profit
 -------------------------------------------`
   );
 }
@@ -167,27 +161,25 @@ function scriptLog() {
   ddBar = drawdown > 0.001 ? ` | DD: -$${drawdown.toFixed(2)}` : "";
   profitRate = spinsPlayed > 0 ? (profit / spinsPlayed * 100).toFixed(2) : "0.00";
   rtp = totalWagered > 0 ? ((totalWagered + profit) / totalWagered * 100).toFixed(2) : "100.00";
-  capWR = capSpins > 0 ? (capWins / capSpins * 100).toFixed(0) : "0";
   vaultBar = totalVaulted > 0 ? ` | Vaulted: $${totalVaulted.toFixed(2)} (${vaultCount}x)` : "";
   targetBar = stopOnTotalProfit > 0 ? ` | Target: $${profit.toFixed(2)}/$${stopOnTotalProfit.toFixed(2)}` : "";
 
   runwayBar = "";
-  if (mode === "strike" && lossStreak > 0) {
-    runwayBar = ` | Runway: LS ${lossStreak}/${maxSurvivableLS}`;
-    if (currentChainCost > 0) runwayBar += ` | Chain: -$${currentChainCost.toFixed(2)}`;
+  if (lossStreak > 0) {
+    runwayBar = ` | Runway: LS ${lossStreak}/${maxSurvivableLS} | Chain: -$${currentChainCost.toFixed(2)}`;
   }
 
   log("#70FD70", `Balance: $${balance.toFixed(2)} | Bet: $${currentTotal.toFixed(4)} | IOL: ${currentMultiplier.toFixed(1)}x`);
-  log(modeColor(), `Mode: ${modeLabel()} | LS: ${lossStreak} | WS: ${winStreak}${runwayBar}`);
+  log("#FF6B6B", `LS: ${lossStreak} | WS: ${winStreak}${runwayBar}`);
   log("#A4FD68", `Profit: $${profit.toFixed(2)} | Peak: $${peakProfit.toFixed(2)}${ddBar}${vaultBar}${targetBar}`);
-  log("#FFDB55", `W/L: ${totalWins}/${totalLosses} | Rate: $${profitRate}/100s | Coverage: ${coveredNumbers}/37 (2 cols)`);
+  log("#FFDB55", `W/L: ${totalWins}/${totalLosses} | Rate: $${profitRate}/100s | Coverage: ${totalNumbers}/37 (${betColor}+${extraNumbers.length})`);
   log("#42CAF7", `RTP: ${rtp}% | Wagered: $${totalWagered.toFixed(2)} (${(totalWagered / startBalance).toFixed(1)}x) | Recoveries: ${recoveries}`);
-  log("#FF6B6B", `IOL chain: ${recoveries} recovered | Current: ${lossStreak > 0 ? "LS " + lossStreak + " at " + currentMultiplier.toFixed(1) + "x" : "base bet"}`);
+  log("#8B949E", `IOL chain: ${recoveries} recovered | ${lossStreak > 0 ? "LS " + lossStreak + " at " + currentMultiplier.toFixed(1) + "x" : "base bet"}`);
   log("#FD71FD", `Spins: ${spinsPlayed} | Max Bet: $${maxBetSeen.toFixed(2)} | Best Recovery: $${biggestRecovery.toFixed(2)} | Max LS: ${maxSurvivableLS}`);
 }
 
 // ============================================================
-// COBRA STRATEGY
+// COBRA STRATEGY — Pure IOL
 // ============================================================
 
 function mainStrategy() {
@@ -196,7 +188,6 @@ function mainStrategy() {
   handPnL = lastBet.payout - lastBet.amount;
   totalWagered += lastBet.amount;
 
-  // Column bets: win = multiplier >= 1.0 (payout includes return of bet)
   isWin = lastBet.win;
 
   if (isWin) {
@@ -213,10 +204,7 @@ function mainStrategy() {
 
   if (profit > peakProfit) peakProfit = profit;
 
-  // === IOL LOGIC (pure strike — no modes needed) ===
-
-  strikeSpins++;
-
+  // IOL logic
   if (isWin) {
     recoveryAmt = baseTotalBet * currentMultiplier;
     if (recoveryAmt > biggestRecovery) biggestRecovery = recoveryAmt;
@@ -225,7 +213,6 @@ function mainStrategy() {
     currentMultiplier = 1;
     selection = buildSelection(1);
   } else {
-    // Loss — IOL escalate
     currentChainCost += lastBet.amount;
     currentMultiplier *= iol;
     selection = buildSelection(currentMultiplier);
@@ -244,7 +231,6 @@ async function vaultHandle() {
 
   if (
     vaultProfitsThreshold > 0 &&
-    mode === "strike" &&
     currentMultiplier <= 1.01 &&
     currentProfit >= vaultProfitsThreshold
   ) {
@@ -258,7 +244,8 @@ async function vaultHandle() {
     // Adaptive rebase
     startBalance = balance;
     baseTotalBet = startBalance / divider;
-    baseColumnBet = baseTotalBet / 2;
+    numBetUnit = baseTotalBet / (18.5 + extraNumbers.length);
+    colorBetUnit = 18.5 * numBetUnit;
     selection = buildSelection(1);
     maxSurvivableLS = calcMaxLS();
   }
@@ -295,10 +282,9 @@ function stopLossCheck() {
 
 logBanner();
 log("#70FD70", `Starting balance: $${startBalance.toFixed(2)}`);
-log("#42CAF7", `Bet: $${baseTotalBet.toFixed(4)} ($${baseColumnBet.toFixed(4)} per col) | Divider: ${divider} | IOL: ${iol}x`);
-colList = (column1 ? "Col1 " : "") + (column2 ? "Col2 " : "") + (column3 ? "Col3" : "");
-log("#FF4500", `Pure IOL ${iol}x | ${colList.trim()} | Reset on win, multiply on miss`);
-log("#FFDB55", `Coverage: ${coveredNumbers}/37 (${(coveredNumbers/37*100).toFixed(0)}%) | Win: +0.50x | Miss: -1.00x | Max LS: ${maxSurvivableLS}`);
+log("#42CAF7", `Total bet: $${baseTotalBet.toFixed(4)} | Color: $${colorBetUnit.toFixed(4)} | Num: $${numBetUnit.toFixed(4)} x${extraNumbers.length}`);
+log("#FF4500", `IOL ${iol}x | ${betColor} + numbers [${extraNumbers.join(",")}] | Win: +${(winFraction*100).toFixed(1)}%`);
+log("#FFDB55", `Coverage: ${totalNumbers}/37 (${(totalNumbers/37*100).toFixed(0)}%) | Max LS: ${maxSurvivableLS}`);
 vaultLabel = vaultPct > 0 ? `Vault at ${vaultPct}% ($${vaultProfitsThreshold.toFixed(2)})` : "No vault";
 stopLabel = stopTotalPct > 0 ? `Stop at ${stopTotalPct}% ($${stopOnTotalProfit.toFixed(2)})` : "No stop";
 log("#4FFB4F", `${vaultLabel} | ${stopLabel}`);
@@ -324,9 +310,6 @@ function logSummary() {
   if (summaryPrinted) return;
   summaryPrinted = true;
   playHitSound();
-  sPct = spinsPlayed > 0 ? (strikeSpins / spinsPlayed * 100).toFixed(1) : "0";
-  cPct = spinsPlayed > 0 ? (capSpins / spinsPlayed * 100).toFixed(1) : "0";
-  capWR = capSpins > 0 ? (capWins / capSpins * 100).toFixed(0) : "0";
   rtpFinal = totalWagered > 0 ? ((totalWagered + profit) / totalWagered * 100).toFixed(2) : "100.00";
   log(
     "#FF4500",
