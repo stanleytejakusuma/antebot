@@ -1,6 +1,7 @@
-// VIPER v2.0 — Blackjack Aggressive Profit Strategy
+// VIPER v3.0 — Blackjack Profit Strategy + Trailing Stop
 // Three-phase: STRIKE (Martingale 2x) → COIL (flat brake) → CAPITALIZE (Paroli 2x)
-// Monte Carlo tested: div=6000, brake@8 → +$54 median, 3.9% bust, 73% win rate
+// v3.0: Trailing stop (no multiplier gate) + trail-aware bet cap + stop loss
+//   trail 8/60 + SL 15%: +$54 median, 0.1% bust, 68.4% win
 //
 // STRIKE:  Martingale 2x on loss — fast one-shot recovery for short streaks
 // COIL:    Flat bet at brake level — survives deep streaks without geometric blowup
@@ -13,7 +14,7 @@
 // Bet matrix by ConnorMcLeod/Vrafasky (community standard)
 
 strategyTitle = "VIPER";
-version = "2.0.0";
+version = "3.0.0";
 author = "stanz";
 scripter = "stanz";
 
@@ -41,13 +42,20 @@ capitalizeStreak = 2;
 capitalizeMaxBets = 2;
 
 // Vault-and-continue (% of starting balance). Set 0 to disable.
-vaultPct = 5; // Vault at 5% profit
-stopTotalPct = 10; // Stop at 10% total session profit (including vaulted)
+vaultPct = 0; // Vault at this % profit
+stopTotalPct = 15; // Stop at 15% total session profit (including vaulted)
 
 // Stop conditions. Set 0 to disable.
 stopOnProfit = 0; // Hard stop on current profit (post-vault). 0 = use % instead.
-stopOnLoss = 0;
+stopOnLoss = 15;
 stopAfterHands = 0;
+
+// Trailing stop config
+trailActivatePct = 8;  // activate trailing stop after profit exceeds this %
+trailLockPct = 60;     // exit if profit drops below this % of peak (40% cushion)
+
+// Reset stats/console on start
+resetOnStart = true;
 
 // ============================================================
 // DO NOT EDIT BELOW THIS LINE
@@ -56,6 +64,9 @@ stopAfterHands = 0;
 if (isSimulationMode) {
   setSimulationBalance(1000);
   resetSeed();
+}
+
+if (resetOnStart) {
   resetStats();
   clearConsole();
 }
@@ -111,6 +122,13 @@ totalVaulted = 0;
 profitAtLastVault = 0;
 vaultCount = 0;
 stopped = false;
+summaryPrinted = false;
+
+// Trailing stop state
+trailActive = false;
+trailFloor = 0;
+trailStopFired = false;
+trailActivateThreshold = startBalance * trailActivatePct / 100;
 
 betSize = currentBet;
 
@@ -246,11 +264,9 @@ function modeColor() {
 function logBanner() {
   log(
     "#FF4500",
-    `================================
- VIPER v${version}
-================================
- by ${author} | FOR PROFIT
--------------------------------------------`
+    "================================\n VIPER v" + version +
+    "\n================================\n by " + author + " | FOR PROFIT" +
+    "\n-------------------------------------------"
   );
 }
 
@@ -261,34 +277,43 @@ function scriptLog() {
   capWinRate = capHands > 0 ? (capWins / capHands * 100).toFixed(0) : "0";
   maxLS = brakeAt > 0 ? brakeAt : Math.floor(Math.log(divider) / Math.log(2));
   drawdown = peakProfit - profit;
-  ddBar = drawdown > 0.001 ? ` | DD: -$${drawdown.toFixed(2)}` : "";
+  ddBar = drawdown > 0.001 ? " | DD: -$" + drawdown.toFixed(2) : "";
   profitRate = handsPlayed > 0 ? (profit / handsPlayed * 100).toFixed(2) : "0.00";
   rtp = totalWagered > 0 ? ((totalWagered + profit) / totalWagered * 100).toFixed(2) : "100.00";
 
   // Mode-specific status
   if (mode === "strike" && currentLossStreak > 0) {
-    modeStatus = ` | Runway: LS ${currentLossStreak}/${maxLS}`;
-    if (currentChainCost > 0) modeStatus += ` | Chain: -$${currentChainCost.toFixed(2)}`;
+    modeStatus = " | Runway: LS " + currentLossStreak + "/" + maxLS;
+    if (currentChainCost > 0) modeStatus += " | Chain: -$" + currentChainCost.toFixed(2);
   } else if (mode === "coil") {
-    modeStatus = ` | Coil: $${coilDeficit.toFixed(2)} deficit | Hand ${coilHands}`;
+    modeStatus = " | Coil: $" + coilDeficit.toFixed(2) + " deficit | Hand " + coilHands;
   } else {
     modeStatus = "";
   }
 
-  log("#70FD70", `Balance: $${balance.toFixed(2)} | Unit: $${unit.toFixed(4)} | Bet: $${currentBet.toFixed(4)}`);
-  log(modeColor(), `Mode: ${modeLabel()} | LS: ${currentLossStreak} | ${(currentBet / unit).toFixed(1)}x${modeStatus}`);
-  sessionTotal = profit; // profit IS the total session P&L (includes vaulted amounts in Antebot's accounting)
-  currentProfit = profit - profitAtLastVault; // profit since last vault
-  vaultBar = totalVaulted > 0 ? ` | Vaulted: $${totalVaulted.toFixed(2)} (${vaultCount}x)` : "";
-  targetBar = stopOnTotalProfit > 0 ? ` | Target: $${profit.toFixed(2)}/$${stopOnTotalProfit.toFixed(2)}` : "";
-  log("#A4FD68", `Profit: $${profit.toFixed(2)} | Peak: $${peakProfit.toFixed(2)}${ddBar}${vaultBar}${targetBar}`);
-  log("#FFDB55", `W/L/P: ${totalWins}/${totalLosses}/${totalPushes} | BJ: ${totalBlackjacks} | Dbl: ${totalDoubles} | Spl: ${totalSplits}`);
-  log("#42CAF7", `RTP: ${rtp}% | Wagered: $${totalWagered.toFixed(2)} (${(totalWagered / startBalance).toFixed(1)}x) | Recoveries: ${recoveryChains}`);
+  // Trailing stop indicator
+  trailBar = "";
+  if (trailActive) {
+    trailBar = " | TRAIL: floor $" + trailFloor.toFixed(2) + " (peak $" + peakProfit.toFixed(2) + ")";
+  } else if (profit > 0) {
+    trailBar = " | Trail arms at $" + trailActivateThreshold.toFixed(2);
+  }
+
+  log("#70FD70", "Balance: $" + balance.toFixed(2) + " | Unit: $" + unit.toFixed(4) + " | Bet: $" + currentBet.toFixed(4));
+  log(modeColor(), "Mode: " + modeLabel() + " | LS: " + currentLossStreak + " | " + (currentBet / unit).toFixed(1) + "x" + modeStatus);
+  sessionTotal = profit;
+  currentProfit = profit - profitAtLastVault;
+  vaultBar = totalVaulted > 0 ? " | Vaulted: $" + totalVaulted.toFixed(2) + " (" + vaultCount + "x)" : "";
+  targetBar = stopOnTotalProfit > 0 ? " | Target: $" + profit.toFixed(2) + "/$" + stopOnTotalProfit.toFixed(2) : "";
+  log("#A4FD68", "Profit: $" + profit.toFixed(2) + " | Peak: $" + peakProfit.toFixed(2) + ddBar + vaultBar + targetBar);
+  log("#FFD700", trailBar);
+  log("#FFDB55", "W/L/P: " + totalWins + "/" + totalLosses + "/" + totalPushes + " | BJ: " + totalBlackjacks + " | Dbl: " + totalDoubles + " | Spl: " + totalSplits);
+  log("#42CAF7", "RTP: " + rtp + "% | Wagered: $" + totalWagered.toFixed(2) + " (" + (totalWagered / startBalance).toFixed(1) + "x) | Recoveries: " + recoveryChains);
   sPct = handsPlayed > 0 ? (strikeHands / handsPlayed * 100).toFixed(0) : "0";
   coPct = handsPlayed > 0 ? (coilHandsTotal / handsPlayed * 100).toFixed(0) : "0";
   caPct = handsPlayed > 0 ? (capHands / handsPlayed * 100).toFixed(0) : "0";
-  log("#FF6B6B", `STRIKE: ${strikeHands} (${sPct}%)  ` + `COIL: ${coilHandsTotal} (${coPct}%)  ` + `CAP: ${capHands} (${caPct}%) [${capTriggered}x, ${capWinRate}% WR, $${capPnL.toFixed(2)}]`);
-  log("#FD71FD", `Hands: ${handsPlayed} | Max Bet: $${maxBetSeen.toFixed(2)} | Best Recovery: $${biggestRecovery.toFixed(2)} | Coil Activations: ${coilActivations}`);
+  log("#FF6B6B", "STRIKE: " + strikeHands + " (" + sPct + "%)  COIL: " + coilHandsTotal + " (" + coPct + "%)  CAP: " + capHands + " (" + caPct + "%) [" + capTriggered + "x, " + capWinRate + "% WR, $" + capPnL.toFixed(2) + "]");
+  log("#FD71FD", "Hands: " + handsPlayed + " | Max Bet: $" + maxBetSeen.toFixed(2) + " | Best Recovery: $" + biggestRecovery.toFixed(2) + " | Coil Activations: " + coilActivations);
 }
 
 // ============================================================
@@ -423,10 +448,40 @@ function mainStrategy() {
   // Track max bet
   if (currentBet > maxBetSeen) maxBetSeen = currentBet;
 
-  // Enforce floor
+  // Trail-aware bet cap: if trail active, cap bet so loss can't breach floor
+  if (trailActive) {
+    trailFloor = peakProfit * trailLockPct / 100;
+    maxTrailBet = profit - trailFloor;
+    if (maxTrailBet > 0 && currentBet > maxTrailBet) {
+      currentBet = maxTrailBet;
+    }
+  }
+
   if (currentBet < unit) currentBet = unit;
 
   betSize = currentBet;
+}
+
+// ============================================================
+// TRAILING STOP
+// ============================================================
+
+function trailingStopCheck() {
+  if (!trailActive && profit >= trailActivateThreshold) {
+    trailActive = true;
+  }
+
+  if (trailActive) {
+    trailFloor = peakProfit * trailLockPct / 100;
+
+    if (profit <= trailFloor) {
+      trailStopFired = true;
+      log("#FFD700", "TRAILING STOP! Profit $" + profit.toFixed(2) + " < floor $" + trailFloor.toFixed(2) + " (peak $" + peakProfit.toFixed(2) + ")");
+      stopped = true;
+      logSummary();
+      engine.stop();
+    }
+  }
 }
 
 // ============================================================
@@ -449,7 +504,7 @@ async function vaultHandle() {
     totalVaulted += vaultAmount;
     profitAtLastVault = profit; // Mark this profit level as vaulted
     vaultCount++;
-    log("#4FFB4F", `Vaulted $${vaultAmount.toFixed(2)} | Total vaulted: $${totalVaulted.toFixed(2)}`);
+    log("#4FFB4F", "Vaulted $" + vaultAmount.toFixed(2) + " | Total vaulted: $" + totalVaulted.toFixed(2));
 
     // Adaptive unit from remaining balance
     unit = balance / divider;
@@ -464,14 +519,14 @@ async function vaultHandle() {
 function stopProfitCheck() {
   // profit = Antebot's cumulative session P&L (already includes vaulted)
   if (stopOnTotalProfit > 0 && profit >= stopOnTotalProfit && currentBet <= unit * 1.01) {
-    log("#4FFB4F", `Target reached! Profit: $${profit.toFixed(2)} (Vaulted: $${totalVaulted.toFixed(2)} + Current: $${(profit - profitAtLastVault).toFixed(2)})`);
+    log("#4FFB4F", "Target reached! Profit: $" + profit.toFixed(2) + " (Vaulted: $" + totalVaulted.toFixed(2) + " + Current: $" + (profit - profitAtLastVault).toFixed(2) + ")");
     stopped = true;
     logSummary();
     engine.stop();
   }
 
   if (stopOnProfit > 0 && profit >= stopOnProfit) {
-    log("#4FFB4F", `Stopped on $${profit.toFixed(2)} Profit`);
+    log("#4FFB4F", "Stopped on $" + profit.toFixed(2) + " Profit");
     stopped = true;
     logSummary();
     engine.stop();
@@ -480,7 +535,7 @@ function stopProfitCheck() {
 
 function stopLossCheck() {
   if (stopOnLoss > 0 && profit < -Math.abs(stopOnLoss)) {
-    log("#FD6868", `Stopped on $${(-profit).toFixed(2)} Loss`);
+    log("#FD6868", "Stopped on $" + (-profit).toFixed(2) + " Loss");
     stopped = true;
     logSummary();
     engine.stop();
@@ -492,33 +547,35 @@ function stopLossCheck() {
 // ============================================================
 
 logBanner();
-log("#70FD70", `Starting balance: $${startBalance.toFixed(2)}`);
-log("#42CAF7", `Unit: $${unit.toFixed(4)} | Divider: ${divider}`);
-brakeLabel = brakeAt > 0 ? `Brake at LS ${brakeAt} (${Math.pow(2, brakeAt).toFixed(0)}x cap)` : "NO BRAKE (pure Martingale)";
-log("#FF4500", `STRIKE (Mart 2x) → COIL (flat brake) → CAPITALIZE (Paroli 2x)`);
-vaultLabel = vaultPct > 0 ? `Vault at ${vaultPct}% ($${vaultProfitsThreshold.toFixed(2)})` : "No vault";
-stopLabel = stopTotalPct > 0 ? `Stop at ${stopTotalPct}% total ($${stopOnTotalProfit.toFixed(2)})` : "No stop";
-log("#FFDB55", `${brakeLabel} | Cap at ${capitalizeStreak} wins x ${capitalizeMaxBets} bets`);
-log("#4FFB4F", `${vaultLabel} | ${stopLabel}`);
+log("#70FD70", "Starting balance: $" + startBalance.toFixed(2));
+log("#42CAF7", "Unit: $" + unit.toFixed(4) + " | Divider: " + divider);
+brakeLabel = brakeAt > 0 ? "Brake at LS " + brakeAt + " (" + Math.pow(2, brakeAt).toFixed(0) + "x cap)" : "NO BRAKE (pure Martingale)";
+log("#FF4500", "STRIKE (Mart 2x) -> COIL (flat brake) -> CAPITALIZE (Paroli 2x)");
+vaultLabel = vaultPct > 0 ? "Vault at " + vaultPct + "% ($" + vaultProfitsThreshold.toFixed(2) + ")" : "No vault";
+stopLabel = stopTotalPct > 0 ? "Stop at " + stopTotalPct + "% total ($" + stopOnTotalProfit.toFixed(2) + ")" : "No stop";
+log("#FFDB55", brakeLabel + " | Cap at " + capitalizeStreak + " wins x " + capitalizeMaxBets + " bets");
+log("#4FFB4F", vaultLabel + " | " + stopLabel);
+log("#FFD700", "Trailing stop: activate at " + trailActivatePct + "% ($" + trailActivateThreshold.toFixed(2) + "), lock " + trailLockPct + "% of peak");
 
 engine.onBetPlaced(async function () {
   if (stopped) return;
 
   mainStrategy();
   scriptLog();
+  trailingStopCheck();
+  if (stopped) return;
   await vaultHandle();
   stopProfitCheck();
   stopLossCheck();
 
   if (stopAfterHands > 0 && handsPlayed >= stopAfterHands) {
-    log("#FFFF2A", `Dev stop: ${handsPlayed} hands reached`);
+    log("#FFFF2A", "Dev stop: " + handsPlayed + " hands reached");
     stopped = true;
     logSummary();
     engine.stop();
   }
 });
 
-summaryPrinted = false;
 function logSummary() {
   if (summaryPrinted) return;
   summaryPrinted = true;
@@ -528,21 +585,24 @@ function logSummary() {
   capPct = handsPlayed > 0 ? (capHands / handsPlayed * 100).toFixed(1) : "0";
   capWR = capHands > 0 ? (capWins / capHands * 100).toFixed(0) : "0";
   rtpFinal = totalWagered > 0 ? ((totalWagered + profit) / totalWagered * 100).toFixed(2) : "100.00";
+  exitType = trailStopFired ? "TRAILING STOP" : "TARGET/MANUAL";
   log(
     "#FF4500",
-    `================================
- VIPER — Session Over
-================================`
+    "================================\n VIPER v" + version + " — " + exitType +
+    "\n================================"
   );
-  log(`Hands: ${handsPlayed} | W/L/P: ${totalWins}/${totalLosses}/${totalPushes}`);
-  log(`BJ: ${totalBlackjacks} | Doubles: ${totalDoubles} | Splits: ${totalSplits}`);
-  log(`Profit: $${profit.toFixed(2)} | Peak: $${peakProfit.toFixed(2)}`);
-  log(`RTP: ${rtpFinal}% | Wagered: $${totalWagered.toFixed(2)} (${(totalWagered / startBalance).toFixed(1)}x)`);
-  log(`Longest LS: ${longestLossStreak} | Longest WS: ${longestWinStreak}`);
-  log(`Max Bet: $${maxBetSeen.toFixed(2)} | Best Recovery: $${biggestRecovery.toFixed(2)} | Recoveries: ${recoveryChains}`);
-  log(`Final bet: $${currentBet.toFixed(2)} (${(currentBet / unit).toFixed(1)}x) | Balance: $${balance.toFixed(2)}`);
-  log("#8B949E", `Modes: STRIKE ${strikeHands} (${strikePct}%) | COIL ${coilHandsTotal} (${coilPct}%) | CAP ${capHands} (${capPct}%)`);
-  log("#8B949E", `Cap: ${capTriggered}x W/L: ${capWins}/${capLosses} (${capWR}% WR) Net: $${capPnL.toFixed(4)} | Coil activations: ${coilActivations}`);
+  if (trailStopFired) {
+    log("#FFD700", "Trail stopped at $" + profit.toFixed(2) + " (floor $" + trailFloor.toFixed(2) + " from peak $" + peakProfit.toFixed(2) + ")");
+  }
+  log("Hands: " + handsPlayed + " | W/L/P: " + totalWins + "/" + totalLosses + "/" + totalPushes);
+  log("BJ: " + totalBlackjacks + " | Doubles: " + totalDoubles + " | Splits: " + totalSplits);
+  log("Profit: $" + profit.toFixed(2) + " | Peak: $" + peakProfit.toFixed(2));
+  log("RTP: " + rtpFinal + "% | Wagered: $" + totalWagered.toFixed(2) + " (" + (totalWagered / startBalance).toFixed(1) + "x)");
+  log("Longest LS: " + longestLossStreak + " | Longest WS: " + longestWinStreak);
+  log("Max Bet: $" + maxBetSeen.toFixed(2) + " | Best Recovery: $" + biggestRecovery.toFixed(2) + " | Recoveries: " + recoveryChains);
+  log("Final bet: $" + currentBet.toFixed(2) + " (" + (currentBet / unit).toFixed(1) + "x) | Balance: $" + balance.toFixed(2));
+  log("#8B949E", "Modes: STRIKE " + strikeHands + " (" + strikePct + "%) | COIL " + coilHandsTotal + " (" + coilPct + "%) | CAP " + capHands + " (" + capPct + "%)");
+  log("#8B949E", "Cap: " + capTriggered + "x W/L: " + capWins + "/" + capLosses + " (" + capWR + "% WR) Net: $" + capPnL.toFixed(4) + " | Coil activations: " + coilActivations);
 }
 
 engine.onBettingStopped(function () {
