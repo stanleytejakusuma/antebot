@@ -512,7 +512,6 @@ async function vaultHandle() {
     currentBet = unit;
     betSize = currentBet;
 
-    resetSeed();
   }
 }
 
