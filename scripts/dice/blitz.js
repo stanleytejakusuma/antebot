@@ -13,7 +13,7 @@
 //   TAIPAN (Roulette v2) / SIDEWINDER (HiLo) / BASILISK (Baccarat) / BLITZ (Dice)
 
 strategyTitle = "BLITZ";
-version = "1.0.0";
+version = "1.0.1";
 author = "stanz";
 scripter = "stanz";
 
@@ -52,6 +52,7 @@ if (isSimulationMode) {
 resetStats();
 clearConsole();
 
+asyncMode = true; // Engine fires next bet without waiting for callback to resolve
 target = chanceToMultiplier(chance);
 startBalance = balance;
 baseBet = startBalance / divider;
