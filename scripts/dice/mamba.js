@@ -14,7 +14,7 @@
 // Snake family: VIPER (BJ) / COBRA (Roulette) / MAMBA (Dice)
 
 strategyTitle = "MAMBA";
-version = "2.0.1";
+version = "2.0.2";
 author = "stanz";
 scripter = "stanz";
 
@@ -40,7 +40,7 @@ divider = 10000;
 increaseOnLossPercent = 200; // IOL: 200 = multiply by 3.0x on loss.
 
 // Trailing stop config
-trailActivatePct = 8;  // activate trailing stop after profit exceeds this % of startBalance
+trailActivatePct = 10;  // activate trailing stop after profit exceeds this % of startBalance
 trailLockPct = 60;     // exit if profit drops below this % of peak profit (40% cushion)
 
 // Bet direction: true = over, false = under

@@ -11,7 +11,7 @@
 // Snake family: VIPER (BJ) / COBRA (Roulette) / MAMBA (Dice) / TAIPAN (Roulette v2) / SIDEWINDER (HiLo)
 
 strategyTitle = "SIDEWINDER";
-version = "1.0.0";
+version = "1.0.1";
 author = "stanz";
 scripter = "stanz";
 
@@ -40,7 +40,7 @@ cashoutCapitalize = 1.1;
 recoveryThresholdPct = 5;
 
 // Trailing stop
-trailActivatePct = 8;
+trailActivatePct = 10;
 trailLockPct = 60;
 
 // Stop conditions

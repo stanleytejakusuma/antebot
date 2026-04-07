@@ -1,9 +1,8 @@
-// TAIPAN v2.0 — Roulette Adaptive Coverage + Tamed IOL
+// TAIPAN v1.1 — Roulette Adaptive Coverage + IOL
 // Dozen + Even-Money split with dynamic coverage switching.
 // Uses pure numberN bets (no mixed range/color — those fail on live Shuffle).
-// TAMED: Delayed IOL (PATIENCE) + bet cap. Cuts tail risk in half.
-// Monte Carlo ($100, 5k): +$5.38 median, 0.0% bust, 61.2% win, -$19.51 P10
-//   Max bet capped at 15% of balance. IOL only after 3+ consecutive losses.
+// Monte Carlo: +$209 median, 0.0% bust, 71.6% win (trail 8/60, SL 15%)
+// Beats COBRA (+$54), Profit R/B (+$53), Single Dozen (+$157).
 //
 // CRUISE:   40% dozen / 60% even-money — wide coverage, steady accumulation
 // RECOVERY: 80% dozen / 20% even-money — concentrated recovery power
@@ -12,10 +11,9 @@
 // The only roulette system that changes WHAT it bets on, not just HOW MUCH.
 //
 // Snake family: VIPER (BJ) / COBRA (Roulette) / MAMBA (Dice) / TAIPAN (Roulette v2)
-//   / SIDEWINDER (HiLo) / BASILISK (Baccarat)
 
 strategyTitle = "TAIPAN";
-version = "2.0.1";
+version = "1.1.0";
 author = "stanz";
 scripter = "stanz";
 
@@ -24,25 +22,16 @@ game = "roulette";
 // USER CONFIG
 // ============================================================
 //
-// RISK PRESETS ($100 bank, trail=8/60, SL=15%, stop=15%):
+// RISK PRESETS ($1000 bank, trail=8/60, SL=15%, stop=15%):
 //
-//   IOL  | Delay | Cap  | Median | Bust% | Win%  | P10     | Profile
-//  ------|-------|------|--------|-------|-------|---------|----------
-//   5.0x |   3   | 15%  | +$5.38 | 0.0%  | 61.2% | -$19.51 | Recommended (tamed)
-//   6.0x |   2   | 15%  | +$5.46 | 0.0%  | 62.0% | -$20.09 | Aggressive tamed
-//   6.0x |   0   | 15%  | +$5.65 | 0.0%  | 59.3% | -$20.35 | Cap only (no delay)
-//   6.0x |   0   |  0%  | +$5.93 | 0.0%  | 63.5% | -$37.16 | Untamed (v1.1)
+//   IOL  | Expand | Median | Bust%  | Win%  | Profile
+//  ------|--------|--------|--------|-------|----------
+//   6.0x | LS 5   | +$209  |  0.0%  | 71.6% | Recommended
+//   5.0x | LS 5   | +$69   |  0.0%  | 74.8% | Conservative
+//   6.0x | LS 6   | +$152  |  0.0%  | 54.4% | Balanced
 //
 divider = 10000;
-iolMultiplier = 5.0;
-
-// PATIENCE: consecutive losses before IOL activates (0 = standard IOL every loss)
-// Borrowed from BASILISK. Absorbs single/double losses at flat bet.
-delayThreshold = 3;
-
-// BET CAP: max bet as % of current balance (0 = no cap)
-// Prevents geometric IOL from spiraling into tail risk.
-betCapPct = 15;
+iolMultiplier = 6.0;
 
 // Which dozen and even-money to bet on
 betDozen = 2;       // 1, 2, or 3
@@ -58,7 +47,7 @@ expandAtLS = 5;     // switch to Two Dozens after this many consecutive losses
 expandDozen = 3;    // which second dozen to add (1, 2, or 3 — must differ from betDozen)
 
 // Trailing stop
-trailActivatePct = 10;
+trailActivatePct = 8;
 trailLockPct = 60;
 
 // Stop conditions
@@ -120,7 +109,6 @@ trailActivateThreshold = startBalance * trailActivatePct / 100;
 
 // State
 currentMultiplier = 1;
-consecLosses = 0;
 lossStreak = 0;
 winStreak = 0;
 longestLossStreak = 0;
@@ -134,8 +122,6 @@ maxBetSeen = baseTotalBet;
 recoveries = 0;
 currentChainCost = 0;
 biggestRecovery = 0;
-iolActivations = 0;
-flatAbsorbed = 0;
 stopped = false;
 summaryPrinted = false;
 
@@ -247,8 +233,7 @@ function scriptLog() {
 
   runwayBar = "";
   if (lossStreak > 0) {
-    iolStatus = consecLosses >= delayThreshold ? "IOL ACTIVE" : "ABSORBING (" + consecLosses + "/" + delayThreshold + ")";
-    runwayBar = " | " + iolStatus + " | LS " + lossStreak + " | Chain: -$" + currentChainCost.toFixed(2);
+    runwayBar = " | LS " + lossStreak + " | Chain: -$" + currentChainCost.toFixed(2);
   }
 
   trailBar = "";
@@ -270,7 +255,6 @@ function scriptLog() {
   ePct = spinsPlayed > 0 ? (expandSpins / spinsPlayed * 100).toFixed(0) : "0";
   pPct = spinsPlayed > 0 ? (protectSpins / spinsPlayed * 100).toFixed(0) : "0";
   log("#FF8C00", "CRUISE:" + cruiseSpins + "(" + cPct + "%) REC:" + recoverySpins + "(" + rPct + "%) EXP:" + expandSpins + "(" + ePct + "%) [" + expandActivations + "x] PROT:" + protectSpins + "(" + pPct + "%)");
-  log("#9B59B6", "IOL activations: " + iolActivations + " | Flat absorbed: " + flatAbsorbed + " | Delay: " + delayThreshold + " | Cap: " + betCapPct + "%");
   log("#FD71FD", "Spins: " + spinsPlayed + " | Max Bet: $" + maxBetSeen.toFixed(4) + " | Best Recovery: $" + biggestRecovery.toFixed(4));
 }
 
@@ -308,29 +292,17 @@ function mainStrategy() {
     if (currentChainCost > 0) recoveries++;
     currentChainCost = 0;
     currentMultiplier = 1;
-    consecLosses = 0;
     currentMode = "cruise";
   } else {
-    // Loss
+    // Loss — IOL escalation
     currentChainCost += lastBet.amount;
-    consecLosses++;
-
-    // PATIENCE: only escalate after delayThreshold consecutive losses
-    if (delayThreshold > 0 && consecLosses < delayThreshold) {
-      // Absorb at flat bet — don't escalate
-      flatAbsorbed++;
-    } else {
-      // IOL escalation
-      currentMultiplier *= iolMultiplier;
-      iolActivations++;
-    }
+    currentMultiplier *= iolMultiplier;
 
     // Soft bust
     nextBet = baseTotalBet * currentMultiplier;
     if (nextBet > balance * 0.95) {
       currentMultiplier = 1;
       currentChainCost = 0;
-      consecLosses = 0;
       currentMode = "cruise";
     } else if (lossStreak >= expandAtLS) {
       if (currentMode !== "expand") expandActivations++;
@@ -346,29 +318,19 @@ function mainStrategy() {
   else if (currentMode === "expand") expandSpins++;
   else if (currentMode === "protect") protectSpins++;
 
-  // Compute next total bet
-  totalBet = baseTotalBet * currentMultiplier;
-
-  // BET CAP: hard limit as % of current balance
-  if (betCapPct > 0) {
-    maxAllowed = balance * betCapPct / 100;
-    if (totalBet > maxAllowed) {
-      totalBet = maxAllowed;
-    }
-  }
-
-  // Trail-aware bet cap (tighter of trail cap and bet cap)
+  // Trail-aware bet cap
   if (trailActive) {
     trailFloor = peakProfit * trailLockPct / 100;
     maxTrailBet = profit - trailFloor;
-    if (maxTrailBet > 0 && totalBet > maxTrailBet) {
-      totalBet = maxTrailBet;
+    nextTotal = baseTotalBet * currentMultiplier;
+    if (maxTrailBet > 0 && nextTotal > maxTrailBet) {
+      currentMultiplier = maxTrailBet / baseTotalBet;
+      if (currentMultiplier < 1) currentMultiplier = 1;
     }
   }
 
-  // Floor at minimum
-  if (totalBet < minBet * 4) totalBet = minBet * 4;
-
+  // Build selection for next spin
+  totalBet = baseTotalBet * currentMultiplier;
   if (totalBet > maxBetSeen) maxBetSeen = totalBet;
   selection = buildSelection(totalBet);
 }
@@ -436,7 +398,7 @@ for (i = 0; i < primaryDozen.length; i++) {
 }
 uniqueCount = coveredCount - overlapCount;
 log("#42CAF7", "Base bet: $" + baseTotalBet.toFixed(5) + " | Dozen: " + betDozen + " | Even: " + betEvenMoney + " | " + uniqueCount + " numbers (" + overlapCount + " overlap)");
-log("#FF8C00", "IOL " + iolMultiplier + "x | Delay: " + delayThreshold + " | Cap: " + betCapPct + "% | Expand at LS " + expandAtLS + " → dozen " + expandDozen);
+log("#FF8C00", "IOL " + iolMultiplier + "x | Expand at LS " + expandAtLS + " → dozen " + expandDozen);
 log("#FFD700", "Trail: activate " + trailActivatePct + "%, lock " + trailLockPct + "% | SL: " + stopOnLoss + "%");
 log("#4FFB4F", "Splits — Cruise: " + cruiseDozenPct + "/" + (100 - cruiseDozenPct) + " | Recovery: " + recoveryDozenPct + "/" + (100 - recoveryDozenPct) + " | Protect: " + protectDozenPct + "/" + (100 - protectDozenPct));
 stopLabel = stopTotalPct > 0 ? "Stop at " + stopTotalPct + "% ($" + stopOnTotalProfit.toFixed(2) + ")" : "No fixed stop";
@@ -488,8 +450,7 @@ function logSummary() {
   if (trailStopFired) {
     log("#FFD700", "Trail stopped at $" + profit.toFixed(2) + " (floor $" + trailFloor.toFixed(2) + " from peak $" + peakProfit.toFixed(2) + ")");
   }
-  log("#9B59B6", "IOL activations: " + iolActivations + " | Flat absorbed: " + flatAbsorbed + " (" + (spinsPlayed > 0 ? (flatAbsorbed / spinsPlayed * 100).toFixed(0) : "0") + "% of spins)");
-  log("#8B949E", "IOL chains recovered: " + recoveries + " | Max LS: " + longestLossStreak + " | Delay: " + delayThreshold + " | Cap: " + betCapPct + "%");
+  log("#8B949E", "IOL chains recovered: " + recoveries + " | Max LS: " + longestLossStreak);
 }
 
 engine.onBettingStopped(function () {

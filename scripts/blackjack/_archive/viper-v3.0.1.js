@@ -1,25 +1,20 @@
-// VIPER v4.0 — Blackjack Profit Strategy + PATIENCE + Trail
-// Four-phase: ABSORB → STRIKE (Martingale 2x) → COIL (flat brake) → CAPITALIZE (Paroli 2x)
-// v4.0: PATIENCE (absorb first loss at flat), div=4000, brake=12, capMax=3
-//   Monte Carlo ($100, 5k, trail 10/60): +$8.09 median, 10.4% bust, 89.0% win
-//   vs v3.0.1: +5.8% median, -0.4pp bust, +18.7% P90
+// VIPER v3.0 — Blackjack Profit Strategy + Trailing Stop
+// Three-phase: STRIKE (Martingale 2x) → COIL (flat brake) → CAPITALIZE (Paroli 2x)
+// v3.0: Trailing stop (no multiplier gate) + trail-aware bet cap + stop loss
+//   trail 8/60 + SL 15%: +$54 median, 0.1% bust, 68.4% win
 //
-// PATIENCE: Absorb 1st consecutive loss at flat bet — don't Martingale immediately.
-//   Most losses are single (self-correct 42.4% of the time). Only genuine streaks
-//   (2+ consecutive losses) warrant Martingale escalation. Reduces activations ~50%.
-//   Borrowed from BASILISK. Enables aggressive divider (4000) without extra bust.
-//
-// STRIKE:  Martingale 2x on 2nd+ consecutive loss — fast recovery
+// STRIKE:  Martingale 2x on loss — fast one-shot recovery for short streaks
 // COIL:    Flat bet at brake level — survives deep streaks without geometric blowup
-// CAPITALIZE: Paroli 2x on win streaks — rides 3 bets of momentum
+// CAPITALIZE: Paroli 2x on win streaks — rides momentum for bonus profit
+//
+// The brake mechanic limits catastrophic exposure:
+//   Without brake: LS 12 = $68 bet (total ruin risk)
+//   With brake@8:  LS 12 = $4.27 bet (survivable, grinds back linearly)
 //
 // Bet matrix by ConnorMcLeod/Vrafasky (community standard)
-//
-// Snake family: VIPER (BJ) / COBRA (Roulette) / MAMBA (Dice) /
-//   TAIPAN (Roulette v2) / SIDEWINDER (HiLo) / BASILISK (Baccarat)
 
 strategyTitle = "VIPER";
-version = "4.0.0";
+version = "3.0.0";
 author = "stanz";
 scripter = "stanz";
 
@@ -28,25 +23,23 @@ game = "blackjack";
 // USER CONFIG
 // ============================================================
 //
-// RISK PRESETS ($100 bank, trail=10/60, MC 5k sessions):
+// RISK PRESETS (div=6000):
 //
-//   Div  | Brake | PAT | Cap  | Median | Bust% | Win%  | P90     | Profile
-//  ------|-------|-----|------|--------|-------|-------|---------|----------
-//   4000 |   12  |  1  | 2/3  | +$8.09 | 10.4% | 89.0% | +$17.32 | Recommended (v4.0)
-//   4000 |   10  |  1  | 2/2  | +$7.63 | 10.6% | 88.0% | +$14.89 | Conservative
-//   5000 |   12  |  1  | 2/2  | +$7.96 | 10.1% | 88.8% | +$16.72 | Balanced
-//   6000 |   10  |  0  | 2/2  | +$7.65 | 10.8% | 88.4% | +$14.59 | v3.0.1 baseline
+//   Brake | Median  | Bust%  | Win%  | P10      | Profile
+//  -------|---------|--------|-------|----------|----------
+//      6  | +$31    | 0.0%   | 67.2% | -$185   | Ultra safe
+//      7  | +$43    | 1.1%   | 72.0% | -$232   | Safe
+//      8  | +$54    | 3.9%   | 73.1% | -$132   | Balanced (recommended)
+//      9  | +$68    | 5.6%   | 71.9% | -$136   | Aggressive
+//     10  | +$85    | 7.0%   | 69.2% | -$228   | Very aggressive
+//     OFF | +$173   | 14.2%  | 78.1% | -$1000  | No brake (pure Martingale)
 //
-divider = 4000;
-brakeAt = 12; // Switch from Martingale to flat after this many consecutive losses. 0 = disabled.
-
-// PATIENCE: consecutive losses before Martingale activates (0 = Mart on every loss)
-// Absorbs single losses at flat bet. Only escalate on 2+ consecutive losses.
-delayThreshold = 1;
+divider = 6000;
+brakeAt = 10; // Switch from Martingale to flat after this many consecutive losses. 0 = disabled (pure Mart+Paroli).
 
 // Capitalize trigger
 capitalizeStreak = 2;
-capitalizeMaxBets = 3;
+capitalizeMaxBets = 2;
 
 // Vault-and-continue (% of starting balance). Set 0 to disable.
 vaultPct = 0; // Vault at this % profit
@@ -58,7 +51,7 @@ stopOnLoss = 15;
 stopAfterHands = 0;
 
 // Trailing stop config
-trailActivatePct = 10;  // activate trailing stop after profit exceeds this %
+trailActivatePct = 8;  // activate trailing stop after profit exceeds this %
 trailLockPct = 60;     // exit if profit drops below this % of peak (40% cushion)
 
 // Reset stats/console on start
@@ -103,13 +96,9 @@ longestWinStreak = 0;
 longestLossStreak = 0;
 currentWinStreak = 0;
 currentLossStreak = 0;
-consecLosses = 0;
 winStreak = 0;
 capCount = 0;
 peakProfit = 0;
-// PATIENCE tracking
-flatAbsorbed = 0;
-martActivations = 0;
 // Brake state
 brakeBet = 0;
 coilDeficit = 0;
@@ -294,8 +283,7 @@ function scriptLog() {
 
   // Mode-specific status
   if (mode === "strike" && currentLossStreak > 0) {
-    patStatus = consecLosses <= delayThreshold ? "ABSORBING (" + consecLosses + "/" + delayThreshold + ")" : "MART ACTIVE";
-    modeStatus = " | " + patStatus + " | LS " + currentLossStreak + "/" + maxLS;
+    modeStatus = " | Runway: LS " + currentLossStreak + "/" + maxLS;
     if (currentChainCost > 0) modeStatus += " | Chain: -$" + currentChainCost.toFixed(2);
   } else if (mode === "coil") {
     modeStatus = " | Coil: $" + coilDeficit.toFixed(2) + " deficit | Hand " + coilHands;
@@ -358,7 +346,6 @@ function mainStrategy() {
     totalWins++;
     currentWinStreak++;
     currentLossStreak = 0;
-    consecLosses = 0;
     winStreak++;
     if (currentWinStreak > longestWinStreak) longestWinStreak = currentWinStreak;
   } else if (lastBet.win && lastBet.payoutMultiplier <= 1) {
@@ -366,7 +353,6 @@ function mainStrategy() {
   } else {
     totalLosses++;
     currentLossStreak++;
-    consecLosses++;
     currentWinStreak = 0;
     if (currentLossStreak > longestLossStreak) longestLossStreak = currentLossStreak;
     winStreak = 0;
@@ -408,13 +394,8 @@ function mainStrategy() {
         coilActivations++;
         mode = "coil";
         // Don't double — hold at current bet
-      } else if (delayThreshold > 0 && consecLosses <= delayThreshold) {
-        // PATIENCE: absorb early losses at flat bet — don't Martingale yet
-        flatAbsorbed++;
       } else {
-        // Martingale: double the bet
         currentBet = currentBet * 2;
-        martActivations++;
       }
     }
 
@@ -430,7 +411,6 @@ function mainStrategy() {
         mode = "strike";
         currentBet = unit;
         currentChainCost = 0;
-        consecLosses = 0;
         recoveryChains++;
 
         if (winStreak >= capitalizeStreak) {
@@ -569,11 +549,10 @@ logBanner();
 log("#70FD70", "Starting balance: $" + startBalance.toFixed(2));
 log("#42CAF7", "Unit: $" + unit.toFixed(4) + " | Divider: " + divider);
 brakeLabel = brakeAt > 0 ? "Brake at LS " + brakeAt + " (" + Math.pow(2, brakeAt).toFixed(0) + "x cap)" : "NO BRAKE (pure Martingale)";
-delayLabel = delayThreshold > 0 ? "PATIENCE=" + delayThreshold + " (absorb first " + delayThreshold + " loss)" : "No delay";
-log("#FF4500", "ABSORB -> STRIKE (Mart 2x) -> COIL (flat brake) -> CAPITALIZE (Paroli 2x)");
+log("#FF4500", "STRIKE (Mart 2x) -> COIL (flat brake) -> CAPITALIZE (Paroli 2x)");
 vaultLabel = vaultPct > 0 ? "Vault at " + vaultPct + "% ($" + vaultProfitsThreshold.toFixed(2) + ")" : "No vault";
 stopLabel = stopTotalPct > 0 ? "Stop at " + stopTotalPct + "% total ($" + stopOnTotalProfit.toFixed(2) + ")" : "No stop";
-log("#FFDB55", brakeLabel + " | " + delayLabel + " | Cap at " + capitalizeStreak + " wins x " + capitalizeMaxBets + " bets");
+log("#FFDB55", brakeLabel + " | Cap at " + capitalizeStreak + " wins x " + capitalizeMaxBets + " bets");
 log("#4FFB4F", vaultLabel + " | " + stopLabel);
 log("#FFD700", "Trailing stop: activate at " + trailActivatePct + "% ($" + trailActivateThreshold.toFixed(2) + "), lock " + trailLockPct + "% of peak");
 
@@ -623,7 +602,6 @@ function logSummary() {
   log("Final bet: $" + currentBet.toFixed(2) + " (" + (currentBet / unit).toFixed(1) + "x) | Balance: $" + balance.toFixed(2));
   log("#8B949E", "Modes: STRIKE " + strikeHands + " (" + strikePct + "%) | COIL " + coilHandsTotal + " (" + coilPct + "%) | CAP " + capHands + " (" + capPct + "%)");
   log("#8B949E", "Cap: " + capTriggered + "x W/L: " + capWins + "/" + capLosses + " (" + capWR + "% WR) Net: $" + capPnL.toFixed(4) + " | Coil activations: " + coilActivations);
-  log("#9B59B6", "PATIENCE: absorbed=" + flatAbsorbed + " (" + (handsPlayed > 0 ? (flatAbsorbed / handsPlayed * 100).toFixed(0) : "0") + "%) | Mart activations=" + martActivations + " | Delay=" + delayThreshold);
 }
 
 engine.onBettingStopped(function () {

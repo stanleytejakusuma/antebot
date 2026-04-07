@@ -111,17 +111,42 @@ H = "  {:<50} {:>8} {:>6} {:>6} {:>8} {:>8} {:>7} {:>8}".format(
     'Strategy', 'Median', 'Bust%', 'Win%', 'P10', 'P90', 'MaxBet%', 'RA')
 S = "  {} {} {} {} {} {} {} {}".format('-'*50, '-'*8, '-'*6, '-'*6, '-'*8, '-'*8, '-'*7, '-'*8)
 
+def _mamba(args):
+    s, bank = args
+    rng = random.Random(SEED * 100000 + s)
+    base = max(bank / 10000, 0.00101)
+    mult = 1.0; profit = 0.0; peak = 0.0; ta = False
+    for _ in range(15000):
+        bal = bank + profit
+        if bal <= 0: return (profit, True, 0, 0)
+        bet = base * mult
+        if bet > bal * 0.95: mult = 1.0; bet = base
+        if bet > bal: bet = bal
+        if bet < 0.001: return (profit, True, 0, 0)
+        if rng.random() < 0.65:
+            profit += bet*(99/65-1); mult=1.0
+        else:
+            profit -= bet; mult *= 3.0
+            if bank+profit > 0 and base*mult > (bank+profit)*0.95: mult=1.0
+        if bank+profit <= 0: return (profit, True, 0, 0)
+        if profit > peak: peak = profit
+        if not ta and profit >= bank*0.08: ta = True
+        if ta and profit <= peak*0.60: return (profit, False, 0, 0)
+        if profit >= bank*0.15 and mult <= 1.01: return (profit, False, 0, 0)
+        if profit <= -bank*0.15: return (profit, False, 0, 0)
+    return (profit, False, 0, 0)
+
 if __name__ == "__main__":
     t0 = time.time()
     pool = Pool(cpu_count())
     bank = 100
-    
+
     print()
     print("=" * 120)
     print("  TAMING TAIPAN — Delayed IOL + Bet Cap")
     print("  {} sessions | ${} bank | trail=8/60 SL=15% stop=15%".format(NUM, bank))
     print("=" * 120)
-    
+
     # CURRENT TAIPAN (untamed)
     print("\n  === CURRENT (untamed) ===")
     print(H); print(S)
@@ -129,7 +154,7 @@ if __name__ == "__main__":
         args = [(s, bank, iol, div, 15, 15, 8, 60, 5, 1, 0) for s in range(NUM)]
         r = stats(pool.map(_session, args))
         pr("TAIPAN IOL={}x div={} (current)".format(iol, div), r, bank)
-    
+
     # FIX 1: BET CAP only
     print("\n  === FIX 1: BET CAP (max bet as % of balance) ===")
     print(H); print(S)
@@ -138,7 +163,7 @@ if __name__ == "__main__":
             args = [(s, bank, iol, 10000, 15, 15, 8, 60, 5, 1, cap) for s in range(NUM)]
             r = stats(pool.map(_session, args))
             pr("IOL={}x cap={}%".format(iol, cap), r, bank)
-    
+
     # FIX 2: DELAYED IOL only
     print("\n  === FIX 2: DELAYED IOL (PATIENCE from BASILISK) ===")
     print(H); print(S)
@@ -147,7 +172,7 @@ if __name__ == "__main__":
             args = [(s, bank, iol, 10000, 15, 15, 8, 60, 5, delay, 0) for s in range(NUM)]
             r = stats(pool.map(_session, args))
             pr("IOL={}x delay={}".format(iol, delay), r, bank)
-    
+
     # FIX 3: BOTH — delayed IOL + bet cap
     print("\n  === FIX 3: BOTH (delayed IOL + bet cap) ===")
     print(H); print(S)
@@ -157,43 +182,17 @@ if __name__ == "__main__":
                 args = [(s, bank, iol, 10000, 15, 15, 8, 60, 5, delay, cap) for s in range(NUM)]
                 r = stats(pool.map(_session, args))
                 pr("IOL={}x delay={} cap={}%".format(iol, delay, cap), r, bank)
-    
+
     # GRAND RANKING — best tamed configs vs MAMBA baseline
     print()
     print("=" * 120)
     print("  GRAND RANKING — Tamed TAIPAN vs baselines")
     print("=" * 120)
     print(H); print(S)
-    
-    # MAMBA baseline
-    def _mamba(args):
-        s, bank = args
-        rng = random.Random(SEED * 100000 + s)
-        base = max(bank / 10000, 0.00101)
-        mult = 1.0; profit = 0.0; peak = 0.0; ta = False
-        for _ in range(15000):
-            bal = bank + profit
-            if bal <= 0: return (profit, True, 0, 0)
-            bet = base * mult
-            if bet > bal * 0.95: mult = 1.0; bet = base
-            if bet > bal: bet = bal
-            if bet < 0.001: return (profit, True, 0, 0)
-            if rng.random() < 0.65:
-                profit += bet*(99/65-1); mult=1.0
-            else:
-                profit -= bet; mult *= 3.0
-                if bank+profit > 0 and base*mult > (bank+profit)*0.95: mult=1.0
-            if bank+profit <= 0: return (profit, True, 0, 0)
-            if profit > peak: peak = profit
-            if not ta and profit >= bank*0.08: ta = True
-            if ta and profit <= peak*0.60: return (profit, False, 0, 0)
-            if profit >= bank*0.15 and mult <= 1.01: return (profit, False, 0, 0)
-            if profit <= -bank*0.15: return (profit, False, 0, 0)
-        return (profit, False, 0, 0)
-    
+
     r_mamba = stats(pool.map(_mamba, [(s, bank) for s in range(NUM)]))
     pr("MAMBA dice 65% IOL=3.0x (baseline)", r_mamba, bank)
-    
+
     # Best tamed configs
     best = [
         ("TAIPAN IOL=6.0x (untamed)", 6.0, 10000, 1, 0),
@@ -209,7 +208,7 @@ if __name__ == "__main__":
         args = [(s, bank, iol, div, 15, 15, 8, 60, 5, delay, cap) for s in range(NUM)]
         r = stats(pool.map(_session, args))
         pr(label, r, bank)
-    
+
     pool.close(); pool.join()
     print("\n  Runtime: {:.1f}s".format(time.time() - t0))
     print("=" * 120)

@@ -18,7 +18,7 @@
 //   TAIPAN (Roulette v2) / SIDEWINDER (HiLo) / BASILISK (Baccarat)
 
 strategyTitle = "BASILISK";
-version = "1.0.3";
+version = "1.0.4";
 author = "stanz";
 scripter = "stanz";
 
@@ -44,7 +44,7 @@ iolMultiplier = 2.1;
 delayThreshold = 3;
 
 // Trailing stop
-trailActivatePct = 8;
+trailActivatePct = 10;
 trailLockPct = 60;
 
 // Stop conditions

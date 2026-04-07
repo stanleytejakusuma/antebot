@@ -8,7 +8,7 @@
 // Miss: 14/37 = 37.8%
 
 strategyTitle = "COBRA";
-version = "5.0.0";
+version = "5.0.1";
 author = "stanz";
 scripter = "stanz";
 
@@ -41,7 +41,7 @@ betColor = "red";
 extraNumbers = [2, 4, 6, 8, 10];
 
 // Trailing stop config
-trailActivatePct = 8;  // activate trailing stop after profit exceeds this %
+trailActivatePct = 10;  // activate trailing stop after profit exceeds this %
 trailLockPct = 60;     // exit if profit drops below this % of peak (40% cushion)
 
 // Stop loss (% of starting balance). Set 0 to disable.
