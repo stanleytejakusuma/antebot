@@ -1,23 +1,20 @@
-// MAMBA v3.0 — Dice Hybrid D'Alembert→Martingale + Trailing Stop
-// 65% chance, D'Alembert for first 3 losses then Martingale 3.0x.
+// MAMBA v2.0 — Dice IOL Profit Strategy + Trailing Stop
+// 65% chance, IOL 3.0x, trailing stop locks profits on decline
 // Win payout: +0.523x bet (99/65 - 1). Miss: 35%. Edge: 1%.
 //
-// v3.0: Hybrid strike replaces pure IOL. Scored by Growth Rate G.
-//   Scorecard ($100, 5k, trail 10/60): G=-9.55%, +$7.88 median, 0.1% bust
-//   vs v2.0: G improved 85% (-61.2%→-9.6%), bust 8.3%→0.1%, median +$0.60
+// v2.0.1: Trailing stop (no multiplier gate) + fixed stop.
+//   trail 5/80 + stop=15%: +$42 median, 4.2% bust, 91.7% win
+//   trail 8/80 + stop=15%: +$61 median, 7.0% bust, 88.4% win
+//   Trail fires mid-IOL — catches crashes that v1 missed.
 //
-// D'ALEMBERT PHASE: First 3 consecutive losses, bet increases linearly
-//   (+1 unit per loss: 1→2→3 units). Chain cost = 6 units. Covers 95.7%
-//   of all loss streaks at 65% win rate. Safe — no geometric blowup.
-// MARTINGALE PHASE: After 3rd loss, switch to 3.0x geometric escalation.
-//   Recovery power for the rare 4.3% of streaks that go deep.
-// TRAIL: Locks profits on decline. Trail-aware bet cap prevents breach.
+// Trailing stop: once profit exceeds trailActivatePct%, track peak profit.
+// If profit drops below trailLockPct% of peak, exit session.
+// Fixed stop still active as upper target.
 //
-// Snake family: VIPER (BJ) / COBRA (Roulette) / MAMBA (Dice) /
-//   TAIPAN (Roulette v2) / SIDEWINDER (HiLo) / BASILISK (Baccarat)
+// Snake family: VIPER (BJ) / COBRA (Roulette) / MAMBA (Dice)
 
 strategyTitle = "MAMBA";
-version = "3.0.0";
+version = "2.0.2";
 author = "stanz";
 scripter = "stanz";
 
@@ -26,24 +23,21 @@ game = "dice";
 // USER CONFIG
 // ============================================================
 //
-// RISK PRESETS ($100 bank, trail=10/60, scored by G):
+// RISK PRESETS (10k bets, $1000 bank, with trailing stop):
 //
-//   DalCap | Mart | G(%)    | Median | Bust% | Win%  | Profile
-//  --------|------|---------|--------|-------|-------|----------
-//      3   | 3.0x | -9.55%  | +$7.88 |  0.1% | 76.6% | Recommended (v3.0)
-//      5   | 3.0x | -57.8%  | +$9.12 |  7.0% | 82.9% | Aggressive (more profit, more bust)
-//      5   | 2.0x | -15.7%  | +$8.24 |  0.4% | 79.7% | Balanced
-//      0   | 3.0x | -61.2%  | +$7.28 |  8.3% | 86.5% | v2.0 (pure IOL)
+//   Stop | Trail  | Median | Bust%  | Win%  | Time  | Profile
+//  ------|--------|--------|--------|-------|-------|----------
+//   10%  | 5/80   | +$42   |  4.2%  | 91.7% | ~4m   | Conservative
+//   15%  | 5/80   | +$42   |  4.2%  | 91.7% | ~4m   | Safe (recommended)
+//   15%  | 8/80   | +$61   |  7.0%  | 88.4% | ~5m   | Balanced
+//   20%  | 8/80   | +$61   |  7.0%  | 88.4% | ~5m   | Aggressive
+//   30%  | 8/80   | +$61   |  7.0%  | 88.4% | ~5m   | Very aggressive
+//  Note: trail fires mid-IOL (no multiplier gate). Lock=80% = exit
+//  when profit drops to 20% of peak. Most trail exits are profitable.
 //
 chance = 65;
 divider = 10000;
-
-// D'ALEMBERT → MARTINGALE HYBRID
-// First dalCap losses: linear +1 unit per loss (D'Alembert phase)
-// After dalCap: switch to Martingale at martIOL multiplier (geometric phase)
-// Set dalCap=0 for pure Martingale (v2.0 behavior)
-dalCap = 3;
-martIOL = 3.0;  // Martingale multiplier (3.0 = triple on loss)
+increaseOnLossPercent = 200; // IOL: 200 = multiply by 3.0x on loss.
 
 // Trailing stop config
 trailActivatePct = 10;  // activate trailing stop after profit exceeds this % of startBalance
@@ -83,7 +77,7 @@ if (resetOnStart) {
 
 target = chanceToMultiplier(chance);
 startBalance = balance;
-iol = martIOL;
+iol = 1 + increaseOnLossPercent / 100;
 winPayout = 99 / chance - 1;
 
 baseBet = startBalance / divider;
@@ -118,11 +112,6 @@ maxSurvivableLS = calcMaxLS();
 
 // State
 currentMultiplier = 1;
-dalUnits = 1;       // Current D'Alembert unit level
-inMart = false;     // True when in Martingale phase
-consecLosses = 0;   // Consecutive losses (for dalCap threshold)
-dalPhaseHands = 0;
-martPhaseHands = 0;
 lossStreak = 0;
 winStreak = 0;
 longestLossStreak = 0;
@@ -174,8 +163,7 @@ function scriptLog() {
 
   runwayBar = "";
   if (lossStreak > 0) {
-    phase = inMart ? "MART " + currentMultiplier.toFixed(1) + "x" : "DAL " + dalUnits + "/" + dalCap + "u";
-    runwayBar = " | " + phase + " | LS " + lossStreak + " | Chain: -$" + currentChainCost.toFixed(2);
+    runwayBar = " | Runway: LS " + lossStreak + "/" + maxSurvivableLS + " | Chain: -$" + currentChainCost.toFixed(2);
   }
 
   totalAssets = balance + totalVaulted;
@@ -225,46 +213,23 @@ function mainStrategy() {
 
   if (profit > peakProfit) peakProfit = profit;
 
-  // Hybrid D'Alembert → Martingale logic
+  // IOL logic
   if (isWin) {
-    recoveryAmt = betSize;
+    recoveryAmt = baseBet * currentMultiplier;
     if (recoveryAmt > biggestRecovery) biggestRecovery = recoveryAmt;
     if (currentChainCost > 0) recoveries++;
     currentChainCost = 0;
     currentMultiplier = 1;
-    dalUnits = 1;
-    inMart = false;
-    consecLosses = 0;
     betSize = baseBet;
   } else {
     currentChainCost += lastBet.amount;
-    consecLosses++;
-
-    if (dalCap > 0 && !inMart && consecLosses < dalCap) {
-      // D'ALEMBERT PHASE: linear +1 unit per loss
-      dalUnits++;
-      currentMultiplier = dalUnits;
-      dalPhaseHands++;
-    } else {
-      // MARTINGALE PHASE: geometric escalation
-      if (!inMart) {
-        // First entry into Mart: start from current D'Alembert level
-        inMart = true;
-        currentMultiplier = dalUnits * iol;
-      } else {
-        currentMultiplier *= iol;
-      }
-      martPhaseHands++;
-    }
+    currentMultiplier *= iol;
 
     // Soft bust: if next bet exceeds balance, reset to base
     nextBet = baseBet * currentMultiplier;
     if (nextBet > balance * 0.95) {
-      log("#FD6868", "Soft bust: $" + nextBet.toFixed(2) + " > 95% of $" + balance.toFixed(2) + " — reset");
+      log("#FD6868", "IOL $" + nextBet.toFixed(2) + " > balance $" + balance.toFixed(2) + " — reset to base");
       currentMultiplier = 1;
-      dalUnits = 1;
-      inMart = false;
-      consecLosses = 0;
       currentChainCost = 0;
     }
 
@@ -371,8 +336,7 @@ function stopLossCheck() {
 logBanner();
 log("#00FF7F", "Starting balance: $" + startBalance.toFixed(2));
 log("#42CAF7", "Base bet: $" + baseBet.toFixed(5) + " | Chance: " + chance + "% | Payout: " + (winPayout + 1).toFixed(3) + "x (+" + (winPayout * 100).toFixed(1) + "%)");
-hybridLabel = dalCap > 0 ? "D'Alembert " + dalCap + " -> Mart " + iol + "x" : "Pure IOL " + iol + "x";
-log("#00FF7F", hybridLabel + " | Max LS: " + maxSurvivableLS);
+log("#00FF7F", "IOL " + iol + "x | Max LS: " + maxSurvivableLS);
 log("#FFD700", "Trailing stop: activate at " + trailActivatePct + "% ($" + trailActivateThreshold.toFixed(2) + "), lock " + trailLockPct + "% of peak");
 vaultLabel = vaultPct > 0 ? "Vault at " + vaultPct + "% ($" + vaultProfitsThreshold.toFixed(2) + ")" : "No vault";
 stopLabel = stopTotalPct > 0 ? "Stop at " + stopTotalPct + "% ($" + stopOnTotalProfit.toFixed(2) + ")" : "No fixed stop";
@@ -418,8 +382,7 @@ function logSummary() {
   if (trailStopFired) {
     log("#FFD700", "Trail stopped at $" + profit.toFixed(2) + " (floor $" + trailFloor.toFixed(2) + " from peak $" + peakProfit.toFixed(2) + ")");
   }
-  log("#8B949E", "Hybrid: DAL=" + dalPhaseHands + " | MART=" + martPhaseHands + " | dalCap=" + dalCap + " | mart=" + iol + "x");
-  log("#8B949E", "Chains recovered: " + recoveries + " | Max LS: " + longestLossStreak + " | Max survivable: " + maxSurvivableLS);
+  log("#8B949E", "IOL chains recovered: " + recoveries + " | Max LS: " + longestLossStreak + " | Max survivable: " + maxSurvivableLS);
 }
 
 engine.onBettingStopped(function () {

@@ -65,7 +65,7 @@ docs/
 | `scripts/blackjack/rampart.js` | Blackjack | RAMPART v3.0 — 6 betting systems (flat/dalembert/martingale/paroli/oscar/fibonacci), advanced perfect strategy, vault-and-continue |
 | `scripts/roulette/profit-on-redblack.js` | Roulette | Profit on Red/Black v1.4 — 24 big/5 small/8 uncovered numbers, 3.5x IOL, adaptive divider after vault, stopAfterVaults walk-away |
 | `scripts/roulette/cobra.js` | Roulette | COBRA v4.2 — Pure 23-number IOL 3.0x, +$412 median (div=10k), vault-and-grind, soft bust protection |
-| `scripts/dice/mamba.js` | Dice | MAMBA v2.0 — Dice 65% IOL 3.0x + trailing stop, same median but 3x lower bust (3.5% vs 9.6% at stop=15%) |
+| `scripts/dice/mamba.js` | Dice | MAMBA v3.0 — Hybrid D'Alembert→Martingale (dalCap=3, mart=3.0x), 65% dice. G=-9.55%, +$7.88 median ($100), 0.1% bust. Scored by Growth Rate. |
 | `scripts/dice/mamba-turbo.js` | Dice | MAMBA TURBO v1.0 — MAMBA + Capitalize (3x bet on 3-streaks), 2.6x faster sessions, +81% wager/hr, same median |
 | `scripts/roulette/taipan.js` | Roulette | TAIPAN v2.0 — Adaptive coverage + tamed IOL (PATIENCE delay=3, cap=15%), IOL 5.0x, +$5.38 median ($100), -$19.51 P10, 0% bust |
 | `scripts/hilo/sidewinder.js` | HiLo | SIDEWINDER v1.0 — Adaptive chain skip={6-8} IOL 3.0x, 3-mode cashout (cruise 1.5x/recovery 2.5x/capitalize 1.1x), +$7.75 median ($100), trail 8/60 |
@@ -74,7 +74,7 @@ docs/
 | `scripts/blackjack/oscars-grind.js` | Blackjack | Oscar's Grind v1.0 — +1u after win only in deficit, cycle goal +1u, #1 median (+$28), 19.8% bust |
 | `scripts/blackjack/oscars-paroli.js` | Blackjack | Oscar's Paroli v1.0 — Oscar's Grind + Paroli capitalize, +$112 median (x20), 32% bust, 60% win rate |
 | `scripts/blackjack/martingale-paroli.js` | Blackjack | Mart+Paroli v1.0 — Martingale 2x + Paroli capitalize, +$163 median (div=6k), beats roulette R/B, 31.5% bust |
-| `scripts/blackjack/viper.js` | Blackjack | VIPER v5.0 — Hybrid D'Alembert→Martingale strike, div=8000, dalCap=5, mart=2x, brake=12. G=-56.5%, +$7.46 median ($100), 7.4% bust. Scored by Growth Rate. |
+| `scripts/blackjack/viper.js` | Blackjack | VIPER v4.0 — PATIENCE (absorb 1st loss) + Strike (Mart 2x) + Coil (brake@12) + Capitalize (Paroli 2x, 3 bets), div=4000, +$8.09 median ($100), 10.4% bust |
 | `scripts/baccarat/basilisk.js` | Baccarat | BASILISK v1.0 — Delayed IOL (PATIENCE): only escalate after 3+ consecutive losses, IOL 2.1x, tie shield, +$5.59 median ($100), 0% bust |
 | `scripts/tools/proving_ground/` | Python | PROVING GROUND — 3-pillar strategy testing harness (Monte Carlo + Markov Chain + Provably Fair Replay) |
 | `scripts/tools/dalembert-simulator.py` | Python | Monte Carlo simulator for BJ/baccarat D'Alembert parameter optimization |
