@@ -16,6 +16,7 @@ Antebot automated betting scripts for casino games. Scripts run in **Antebot Cod
 - **`engine.stop()`** — never bare `stop()`
 - **`isSimulationMode`** — engine API boolean (read-only). NOT `isSimulatedMode`.
 - Arrow functions and async are OK for engine callbacks
+- **Version bumps** — increment `version` on EVERY code change (semver: patch for config/param, minor for behavior, major for thesis). Update both the variable and header comments.
 
 ## Script Architecture
 
