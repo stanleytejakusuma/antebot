@@ -248,9 +248,10 @@ function mainStrategy() {
     } else {
       // MARTINGALE PHASE: geometric escalation
       if (!inMart) {
-        // First entry into Mart: start from current D'Alembert level
+        // First entry into Mart: stay at D'Alembert level (no jump)
+        // Martingale multiplies on NEXT loss, not this one
         inMart = true;
-        currentMultiplier = dalUnits * iol;
+        currentMultiplier = dalUnits;
       } else {
         currentMultiplier *= iol;
       }
