@@ -1,17 +1,16 @@
-// VIPER v5.0 — Blackjack Hybrid Recovery + Trail
-// D'Alembert → Martingale hybrid: linear escalation for short streaks, geometric
-// recovery for deep streaks. Optimized by Growth Rate G (session-compounding metric).
+// VIPER v4.0 — Blackjack Profit Strategy + PATIENCE + Trail
+// Four-phase: ABSORB → STRIKE (Martingale 2x) → COIL (flat brake) → CAPITALIZE (Paroli 2x)
+// v4.0: PATIENCE (absorb first loss at flat), div=4000, brake=12, capMax=3
+//   Monte Carlo ($100, 5k, trail 10/60): +$8.09 median, 10.4% bust, 89.0% win
+//   vs v3.0.1: +5.8% median, -0.4pp bust, +18.7% P90
 //
-// v5.0: Hybrid strike (D'Alembert first 5 losses, then Mart 2x), div=8000, brake=12
-//   Scorecard ($100, 5k, trail 10/60): G=-56.5%, +$7.46 median, 7.4% bust, 83.6% win
-//   vs v4.0: G improved 16% (-67.3%→-56.5%), bust -2.7pp, sessions 3x longer
+// PATIENCE: Absorb 1st consecutive loss at flat bet — don't Martingale immediately.
+//   Most losses are single (self-correct 42.4% of the time). Only genuine streaks
+//   (2+ consecutive losses) warrant Martingale escalation. Reduces activations ~50%.
+//   Borrowed from BASILISK. Enables aggressive divider (4000) without extra bust.
 //
-// STRIKE (D'Alembert phase): +1 unit on loss for first 5 consecutive losses.
-//   Linear escalation: 1→2→3→4→5 units. Chain cost = 15 units ($0.19 at div=8000).
-//   Safe — no geometric blowup. Covers ~97% of loss streaks.
-// STRIKE (Martingale phase): After 5th consecutive loss, switch to 2x geometric.
-//   Recovery power for the deep 3% of streaks that D'Alembert can't handle.
-// COIL:    Flat bet at brake level (brake=12) — last resort for extreme streaks
+// STRIKE:  Martingale 2x on 2nd+ consecutive loss — fast recovery
+// COIL:    Flat bet at brake level — survives deep streaks without geometric blowup
 // CAPITALIZE: Paroli 2x on win streaks — rides 3 bets of momentum
 //
 // Bet matrix by ConnorMcLeod/Vrafasky (community standard)
@@ -20,7 +19,7 @@
 //   TAIPAN (Roulette v2) / SIDEWINDER (HiLo) / BASILISK (Baccarat)
 
 strategyTitle = "VIPER";
-version = "5.0.0";
+version = "4.0.0";
 author = "stanz";
 scripter = "stanz";
 
@@ -29,24 +28,21 @@ game = "blackjack";
 // USER CONFIG
 // ============================================================
 //
-// RISK PRESETS ($100 bank, trail=10/60, scored by G):
+// RISK PRESETS ($100 bank, trail=10/60, MC 5k sessions):
 //
-//   Div  | Brake | DalCap | Mart | G(%)    | Median | Bust% | Profile
-//  ------|-------|--------|------|---------|--------|-------|----------
-//   8000 |   12  |   5    | 2x   | -56.5%  | +$7.46 |  7.4% | Recommended (v5.0)
-//   5000 |   12  |   5    | 2x   | -62.0%  | +$7.66 |  8.9% | Balanced
-//   8000 |   12  |   3    | 2x   | -66.2%  | +$7.99 | 10.1% | Aggressive
-//   4000 |   12  |   1*   | 2x   | -67.3%  | +$8.09 | 10.1% | v4.0 (PATIENCE)
-//  * v4.0 used PATIENCE (absorb 1 loss) instead of D'Alembert
+//   Div  | Brake | PAT | Cap  | Median | Bust% | Win%  | P90     | Profile
+//  ------|-------|-----|------|--------|-------|-------|---------|----------
+//   4000 |   12  |  1  | 2/3  | +$8.09 | 10.4% | 89.0% | +$17.32 | Recommended (v4.0)
+//   4000 |   10  |  1  | 2/2  | +$7.63 | 10.6% | 88.0% | +$14.89 | Conservative
+//   5000 |   12  |  1  | 2/2  | +$7.96 | 10.1% | 88.8% | +$16.72 | Balanced
+//   6000 |   10  |  0  | 2/2  | +$7.65 | 10.8% | 88.4% | +$14.59 | v3.0.1 baseline
 //
-divider = 8000;
-brakeAt = 12; // Switch to coil after this many consecutive losses. 0 = disabled.
+divider = 4000;
+brakeAt = 12; // Switch from Martingale to flat after this many consecutive losses. 0 = disabled.
 
-// D'ALEMBERT → MARTINGALE HYBRID
-// First dalCap losses: linear +1 unit per loss (D'Alembert phase)
-// After dalCap losses: switch to Martingale at mart multiplier (geometric phase)
-dalCap = 5;      // D'Alembert for first 5 losses, then Martingale
-martMultiplier = 2; // Martingale multiplier (2 = classic double)
+// PATIENCE: consecutive losses before Martingale activates (0 = Mart on every loss)
+// Absorbs single losses at flat bet. Only escalate on 2+ consecutive losses.
+delayThreshold = 1;
 
 // Capitalize trigger
 capitalizeStreak = 2;
@@ -111,11 +107,9 @@ consecLosses = 0;
 winStreak = 0;
 capCount = 0;
 peakProfit = 0;
-// Hybrid strike tracking
-dalUnits = 1;       // Current D'Alembert unit level
-inMart = false;     // true when in Martingale phase of hybrid
-dalPhaseHands = 0;  // Hands spent in D'Alembert phase
-martPhaseHands = 0; // Hands spent in Martingale phase
+// PATIENCE tracking
+flatAbsorbed = 0;
+martActivations = 0;
 // Brake state
 brakeBet = 0;
 coilDeficit = 0;
@@ -300,8 +294,8 @@ function scriptLog() {
 
   // Mode-specific status
   if (mode === "strike" && currentLossStreak > 0) {
-    strikePhase = inMart ? "MART " + (currentBet / unit).toFixed(0) + "x" : "DAL " + dalUnits + "/" + dalCap + "u";
-    modeStatus = " | " + strikePhase + " | LS " + currentLossStreak + "/" + maxLS;
+    patStatus = consecLosses <= delayThreshold ? "ABSORBING (" + consecLosses + "/" + delayThreshold + ")" : "MART ACTIVE";
+    modeStatus = " | " + patStatus + " | LS " + currentLossStreak + "/" + maxLS;
     if (currentChainCost > 0) modeStatus += " | Chain: -$" + currentChainCost.toFixed(2);
   } else if (mode === "coil") {
     modeStatus = " | Coil: $" + coilDeficit.toFixed(2) + " deficit | Hand " + coilHands;
@@ -396,8 +390,6 @@ function mainStrategy() {
       if (currentChainCost > 0) recoveryChains++;
       currentChainCost = 0;
       currentBet = unit;
-      dalUnits = 1;
-      inMart = false;
 
       // Check capitalize
       if (winStreak >= capitalizeStreak) {
@@ -418,20 +410,13 @@ function mainStrategy() {
         coilActivations++;
         mode = "coil";
         // Don't double — hold at current bet
-      } else if (inMart) {
-        // MARTINGALE PHASE: geometric escalation for deep streaks
-        currentBet = currentBet * martMultiplier;
-        martPhaseHands++;
+      } else if (delayThreshold > 0 && consecLosses <= delayThreshold) {
+        // PATIENCE: absorb early losses at flat bet — don't Martingale yet
+        flatAbsorbed++;
       } else {
-        // D'ALEMBERT PHASE: linear +1 unit for short streaks
-        dalUnits++;
-        currentBet = unit * dalUnits;
-        dalPhaseHands++;
-        // Switch to Martingale after dalCap consecutive losses
-        if (consecLosses >= dalCap) {
-          inMart = true;
-          currentBet = unit * dalUnits * martMultiplier;
-        }
+        // Martingale: double the bet
+        currentBet = currentBet * 2;
+        martActivations++;
       }
     }
 
@@ -448,8 +433,6 @@ function mainStrategy() {
         currentBet = unit;
         currentChainCost = 0;
         consecLosses = 0;
-        dalUnits = 1;
-        inMart = false;
         recoveryChains++;
 
         if (winStreak >= capitalizeStreak) {
@@ -589,11 +572,11 @@ logBanner();
 log("#70FD70", "Starting balance: $" + startBalance.toFixed(2));
 log("#42CAF7", "Unit: $" + unit.toFixed(4) + " | Divider: " + divider);
 brakeLabel = brakeAt > 0 ? "Brake at LS " + brakeAt + " (" + Math.pow(2, brakeAt).toFixed(0) + "x cap)" : "NO BRAKE (pure Martingale)";
-hybridLabel = "D'Alembert " + dalCap + " -> Mart " + martMultiplier + "x";
-log("#FF4500", "STRIKE (DAL+" + dalCap + " -> Mart " + martMultiplier + "x) -> COIL (flat brake) -> CAPITALIZE (Paroli 2x)");
+delayLabel = delayThreshold > 0 ? "PATIENCE=" + delayThreshold + " (absorb first " + delayThreshold + " loss)" : "No delay";
+log("#FF4500", "ABSORB -> STRIKE (Mart 2x) -> COIL (flat brake) -> CAPITALIZE (Paroli 2x)");
 vaultLabel = vaultPct > 0 ? "Vault at " + vaultPct + "% ($" + vaultProfitsThreshold.toFixed(2) + ")" : "No vault";
 stopLabel = stopTotalPct > 0 ? "Stop at " + stopTotalPct + "% total ($" + stopOnTotalProfit.toFixed(2) + ")" : "No stop";
-log("#FFDB55", brakeLabel + " | " + hybridLabel + " | Cap at " + capitalizeStreak + " wins x " + capitalizeMaxBets + " bets");
+log("#FFDB55", brakeLabel + " | " + delayLabel + " | Cap at " + capitalizeStreak + " wins x " + capitalizeMaxBets + " bets");
 log("#4FFB4F", vaultLabel + " | " + stopLabel);
 log("#FFD700", "Trailing stop: activate at " + trailActivatePct + "% ($" + trailActivateThreshold.toFixed(2) + "), lock " + trailLockPct + "% of peak");
 
@@ -643,7 +626,7 @@ function logSummary() {
   log("Final bet: $" + currentBet.toFixed(2) + " (" + (currentBet / unit).toFixed(1) + "x) | Balance: $" + balance.toFixed(2));
   log("#8B949E", "Modes: STRIKE " + strikeHands + " (" + strikePct + "%) | COIL " + coilHandsTotal + " (" + coilPct + "%) | CAP " + capHands + " (" + capPct + "%)");
   log("#8B949E", "Cap: " + capTriggered + "x W/L: " + capWins + "/" + capLosses + " (" + capWR + "% WR) Net: $" + capPnL.toFixed(4) + " | Coil activations: " + coilActivations);
-  log("#9B59B6", "Hybrid: DAL=" + dalPhaseHands + " hands | MART=" + martPhaseHands + " hands | dalCap=" + dalCap + " | mart=" + martMultiplier + "x");
+  log("#9B59B6", "PATIENCE: absorbed=" + flatAbsorbed + " (" + (handsPlayed > 0 ? (flatAbsorbed / handsPlayed * 100).toFixed(0) : "0") + "%) | Mart activations=" + martActivations + " | Delay=" + delayThreshold);
 }
 
 engine.onBettingStopped(function () {

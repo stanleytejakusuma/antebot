@@ -74,7 +74,7 @@ docs/
 | `scripts/blackjack/oscars-grind.js` | Blackjack | Oscar's Grind v1.0 — +1u after win only in deficit, cycle goal +1u, #1 median (+$28), 19.8% bust |
 | `scripts/blackjack/oscars-paroli.js` | Blackjack | Oscar's Paroli v1.0 — Oscar's Grind + Paroli capitalize, +$112 median (x20), 32% bust, 60% win rate |
 | `scripts/blackjack/martingale-paroli.js` | Blackjack | Mart+Paroli v1.0 — Martingale 2x + Paroli capitalize, +$163 median (div=6k), beats roulette R/B, 31.5% bust |
-| `scripts/blackjack/viper.js` | Blackjack | VIPER v4.0 — PATIENCE (absorb 1st loss) + Strike (Mart 2x) + Coil (brake@12) + Capitalize (Paroli 2x, 3 bets), div=4000, +$8.09 median ($100), 10.4% bust |
+| `scripts/blackjack/viper.js` | Blackjack | VIPER v5.0 — Hybrid D'Alembert→Martingale strike, div=8000, dalCap=5, mart=2x, brake=12. G=-56.5%, +$7.46 median ($100), 7.4% bust. Scored by Growth Rate. |
 | `scripts/baccarat/basilisk.js` | Baccarat | BASILISK v1.0 — Delayed IOL (PATIENCE): only escalate after 3+ consecutive losses, IOL 2.1x, tie shield, +$5.59 median ($100), 0% bust |
 | `scripts/tools/proving_ground/` | Python | PROVING GROUND — 3-pillar strategy testing harness (Monte Carlo + Markov Chain + Provably Fair Replay) |
 | `scripts/tools/dalembert-simulator.py` | Python | Monte Carlo simulator for BJ/baccarat D'Alembert parameter optimization |
