@@ -362,6 +362,8 @@ function mainStrategy() {
     winStreak++;
     if (currentWinStreak > longestWinStreak) longestWinStreak = currentWinStreak;
   } else if (lastBet.win && lastBet.payoutMultiplier <= 1) {
+    // PUSH: neutral event — does NOT reset consecLosses or currentLossStreak.
+    // Same as BASILISK tie handling: pushes don't break a loss streak.
     totalPushes++;
   } else {
     totalLosses++;
@@ -442,6 +444,7 @@ function mainStrategy() {
       // Otherwise stay in coil at same bet (flat)
     }
     // Loss/push in coil: stay at same bet (flat at brake level)
+
 
   } else if (mode === "capitalize") {
     capHands++;

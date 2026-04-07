@@ -20,17 +20,22 @@ def _viper(args):
     """Parametrized VIPER session.
 
     args = (s, bank, div, brake_at, cap_streak, cap_max, delay,
-            bet_cap_pct, coil_mult, trail_act, trail_lock, sl_pct, stop_pct)
+            bet_cap_pct, coil_mult, coil_max_hands, vault_pct,
+            trail_act, trail_lock, sl_pct, stop_pct)
     """
     (s, bank, div, brake_at, cap_streak, cap_max, delay,
-     bet_cap_pct, coil_mult, trail_act, trail_lock, sl_pct, stop_pct) = args
+     bet_cap_pct, coil_mult, coil_max_hands, vault_pct,
+     trail_act, trail_lock, sl_pct, stop_pct) = args
 
     rng = random.Random(SEED * 100000 + s)
     unit = max(bank / div, 0.001)
+    start_bank = bank
     bet = unit; profit = 0.0; peak = 0.0; ta = False; hands = 0
     mode = 0  # 0=strike, 1=coil, 2=capitalize
     ls = 0; ws = 0; consec_ls = 0; cap_count = 0
-    coil_deficit = 0.0
+    coil_deficit = 0.0; coil_hands = 0
+    vault_thresh = start_bank * vault_pct / 100 if vault_pct > 0 else 0
+    total_vaulted = 0.0; profit_at_vault = 0.0
     stop_t = bank * stop_pct / 100 if stop_pct > 0 else 0
     sl_t = bank * sl_pct / 100 if sl_pct > 0 else 0
     act_t = bank * trail_act / 100 if trail_act > 0 else 0
@@ -104,7 +109,7 @@ def _viper(args):
                     # BRAKE → COIL
                     if coil_mult < 1.0:
                         bet = bet * coil_mult  # Reduce coil bet
-                    coil_deficit = 0
+                    coil_deficit = 0; coil_hands = 0
                     mode = 1
                 else:
                     # PATIENCE: only Martingale after `delay` consecutive losses
@@ -114,11 +119,15 @@ def _viper(args):
                         bet = bet * 2
 
         elif mode == 1:  # COIL
+            coil_hands += 1
             coil_deficit += pnl
             if is_win and coil_deficit >= 0:
-                mode = 0; bet = unit  # Recovered
+                mode = 0; bet = unit; consec_ls = 0  # Recovered
                 if ws >= cap_streak:
                     mode = 2; cap_count = 0
+            # Coil escape: abandon chain after N hands
+            elif coil_max_hands > 0 and coil_hands >= coil_max_hands:
+                mode = 0; bet = unit; consec_ls = 0
 
         elif mode == 2:  # CAPITALIZE
             cap_count += 1
@@ -128,6 +137,15 @@ def _viper(args):
                 bet = bet * 2
 
         if bet < unit: bet = unit
+
+        # === Vault ===
+        if vault_thresh > 0 and mode == 0 and bet <= unit * 1.01:
+            current_profit = profit - profit_at_vault
+            if current_profit >= vault_thresh:
+                total_vaulted += current_profit
+                profit_at_vault = profit
+                unit = max((start_bank + profit - total_vaulted) / div, 0.001)
+                bet = unit
 
         # === Stops ===
         if bank + profit <= 0: return (profit, True, hands)
@@ -164,9 +182,10 @@ SEP = "  {} {} {} {} {} {} {} {}".format('-'*55, '-'*8, '-'*6, '-'*6, '-'*8, '-'
 
 
 def run_config(pool, label, num, bank, div, brake, cs, cm, delay, cap, coil,
-               ta=10, tl=60, sl=15, stop=15):
+               coil_max=0, vault=0, ta=10, tl=60, sl=15, stop=15):
     """Run a config and return (label, stats_dict)."""
-    args = [(s, bank, div, brake, cs, cm, delay, cap, coil, ta, tl, sl, stop)
+    args = [(s, bank, div, brake, cs, cm, delay, cap, coil, coil_max, vault,
+             ta, tl, sl, stop)
             for s in range(num)]
     r = stats(pool.map(_viper, args))
     r['tag'] = label
@@ -177,170 +196,110 @@ if __name__ == "__main__":
     t0 = time.time()
     pool = Pool(cpu_count())
     bank = BANK
-    N1 = 3000  # Phase 1-3 sessions
-    N2 = 5000  # Phase 4 validation
+    N = 5000
 
     print()
     print("=" * 130)
-    print("  VIPER v4.0 PROFIT OPTIMIZER")
-    print("  Calibrated BJ model (-0.52% edge) | ${} bank | trail=10/60 | SL=15% | stop=15%".format(bank))
+    print("  VIPER v4.1 WEAKNESS FIX OPTIMIZER — Coil Escape + Vault")
+    print("  Calibrated BJ model (-0.52% edge) | ${} bank | trail=10/60".format(bank))
     print("=" * 130)
 
     all_results = []
 
     # ================================================================
-    # PHASE 1: Divider × Brake (core risk dial)
+    # BASELINE: v4.0 (no coil escape, no vault)
     # ================================================================
-    print("\n  === PHASE 1: Divider × Brake ({} sessions) ===".format(N1))
-    print("  cap=2/2, delay=0, betCap=0, coil=1.0 (current defaults)")
+    print("\n  === BASELINE (trail only, no SL/stop) ===")
     print(H); print(SEP)
 
-    for div in [3000, 4000, 5000, 6000, 8000]:
-        for brake in [6, 8, 10, 12]:
-            label = "div={} brake={}".format(div, brake)
-            r = run_config(pool, label, N1, bank, div, brake, 2, 2, 0, 0, 1.0)
-            all_results.append(r)
-            pr(label, r)
+    base = run_config(pool, "v4.0 BASELINE (no fixes)", N, bank,
+                      4000, 12, 2, 3, 1, 0, 1.0, coil_max=0, vault=0,
+                      ta=10, tl=60, sl=0, stop=0)
+    all_results.append(base); pr(base['tag'], base)
+
+    # Also with SL+stop for reference
+    base_safe = run_config(pool, "v4.0 BASELINE (SL+stop)", N, bank,
+                           4000, 12, 2, 3, 1, 0, 1.0, coil_max=0, vault=0,
+                           ta=10, tl=60, sl=15, stop=15)
+    all_results.append(base_safe); pr(base_safe['tag'], base_safe)
 
     # ================================================================
-    # PHASE 2: Capitalize tuning (on promising div/brake combos)
+    # COIL ESCAPE SWEEP (trail only)
     # ================================================================
-    print("\n  === PHASE 2: Capitalize Tuning ({} sessions) ===".format(N1))
-    print("  Testing on div=4000/5000, brake=10")
+    print("\n  === COIL ESCAPE SWEEP (trail only) ===")
     print(H); print(SEP)
 
-    for div in [4000, 5000]:
-        for cs in [1, 2]:
-            for cm in [1, 2, 3]:
-                label = "div={} b=10 cap={}/{}".format(div, cs, cm)
-                r = run_config(pool, label, N1, bank, div, 10, cs, cm, 0, 0, 1.0)
-                all_results.append(r)
-                pr(label, r)
+    for cm in [5, 10, 15, 20, 30, 50]:
+        label = "coilMax={}".format(cm)
+        r = run_config(pool, label, N, bank,
+                       4000, 12, 2, 3, 1, 0, 1.0, coil_max=cm, vault=0,
+                       ta=10, tl=60, sl=0, stop=0)
+        all_results.append(r); pr(label, r)
 
     # ================================================================
-    # PHASE 3: PATIENCE + BetCap + CoilReduction (innovation layer)
+    # VAULT SWEEP (trail only)
     # ================================================================
-    print("\n  === PHASE 3: Innovations ({} sessions) ===".format(N1))
-    print("  PATIENCE (delay), BET CAP, coil reduction")
+    print("\n  === VAULT SWEEP (trail only) ===")
     print(H); print(SEP)
 
-    # PATIENCE exploration (on best div/brake)
-    for div in [4000, 5000]:
-        for delay in [1, 2]:
-            label = "div={} b=10 PATIENCE={}".format(div, delay)
-            r = run_config(pool, label, N1, bank, div, 10, 2, 2, delay, 0, 1.0)
-            all_results.append(r)
-            pr(label, r)
+    for vp in [3, 5, 8, 10]:
+        label = "vault={}%".format(vp)
+        r = run_config(pool, label, N, bank,
+                       4000, 12, 2, 3, 1, 0, 1.0, coil_max=0, vault=vp,
+                       ta=10, tl=60, sl=0, stop=0)
+        all_results.append(r); pr(label, r)
 
-    # BetCap exploration
-    for div in [4000, 5000]:
-        for cap in [10, 15, 20]:
-            label = "div={} b=10 betCap={}%".format(div, cap)
-            r = run_config(pool, label, N1, bank, div, 10, 2, 2, 0, cap, 1.0)
-            all_results.append(r)
-            pr(label, r)
-
-    # Coil reduction
-    for div in [4000, 5000]:
-        for coil in [0.5, 0.25]:
-            label = "div={} b=10 coil={}x".format(div, coil)
-            r = run_config(pool, label, N1, bank, div, 10, 2, 2, 0, 0, coil)
-            all_results.append(r)
-            pr(label, r)
-
-    # Stacked innovations (best combinations)
-    print("\n  === PHASE 3b: Stacked Innovations ===")
+    # ================================================================
+    # COMBINED: Coil Escape × Vault (trail only)
+    # ================================================================
+    print("\n  === COMBINED: Coil Escape x Vault (trail only) ===")
     print(H); print(SEP)
 
-    combos = [
-        ("div=4000 b=10 PAT=1 cap=15%",        4000, 10, 2, 2, 1, 15, 1.0),
-        ("div=4000 b=10 PAT=1 cap=20%",        4000, 10, 2, 2, 1, 20, 1.0),
-        ("div=4000 b=10 PAT=1 coil=0.5",       4000, 10, 2, 2, 1, 0,  0.5),
-        ("div=4000 b=10 PAT=1 cap=15% coil=0.5", 4000, 10, 2, 2, 1, 15, 0.5),
-        ("div=5000 b=10 PAT=1 cap=15%",        5000, 10, 2, 2, 1, 15, 1.0),
-        ("div=5000 b=10 PAT=1 cap=20%",        5000, 10, 2, 2, 1, 20, 1.0),
-        ("div=5000 b=10 PAT=1 coil=0.5",       5000, 10, 2, 2, 1, 0,  0.5),
-        ("div=4000 b=12 PAT=1 cap=20%",        4000, 12, 2, 2, 1, 20, 1.0),
-        ("div=4000 b=10 cap=1/3 PAT=1 cap=15%", 4000, 10, 1, 3, 1, 15, 1.0),
-        ("div=4000 b=10 cap=2/3 PAT=1 cap=15%", 4000, 10, 2, 3, 1, 15, 1.0),
-        ("div=5000 b=10 cap=2/3 PAT=1",        5000, 10, 2, 3, 1, 0,  1.0),
-        ("div=4000 b=10 PAT=2 cap=15%",        4000, 10, 2, 2, 2, 15, 1.0),
+    for cm in [10, 15, 20, 30]:
+        for vp in [0, 5, 8]:
+            label = "coilMax={} vault={}%".format(cm, vp)
+            r = run_config(pool, label, N, bank,
+                           4000, 12, 2, 3, 1, 0, 1.0, coil_max=cm, vault=vp,
+                           ta=10, tl=60, sl=0, stop=0)
+            all_results.append(r); pr(label, r)
+
+    # ================================================================
+    # COMBINED with SL+stop (production config)
+    # ================================================================
+    print("\n  === BEST CONFIGS with SL=15% + stop=15% ===")
+    print(H); print(SEP)
+
+    prod_configs = [
+        ("v4.0 (no fixes, SL+stop)",       0, 0),
+        ("coilMax=15 (SL+stop)",           15, 0),
+        ("coilMax=20 (SL+stop)",           20, 0),
+        ("vault=8% (SL+stop)",              0, 8),
+        ("coilMax=15 vault=8% (SL+stop)",  15, 8),
+        ("coilMax=20 vault=8% (SL+stop)",  20, 8),
+        ("coilMax=20 vault=5% (SL+stop)",  20, 5),
+        ("coilMax=30 vault=8% (SL+stop)",  30, 8),
     ]
-    for label, div, brake, cs, cm, delay, cap, coil in combos:
-        r = run_config(pool, label, N1, bank, div, brake, cs, cm, delay, cap, coil)
-        all_results.append(r)
-        pr(label, r)
+    for label, cm, vp in prod_configs:
+        r = run_config(pool, label, N, bank,
+                       4000, 12, 2, 3, 1, 0, 1.0, coil_max=cm, vault=vp,
+                       ta=10, tl=60, sl=15, stop=15)
+        all_results.append(r); pr(label, r)
 
     # ================================================================
     # GRAND RANKING
     # ================================================================
     print()
     print("=" * 130)
-    print("  GRAND RANKING — by median profit (top 20)")
+    print("  GRAND RANKING — by median profit (all configs)")
     print("=" * 130)
     print(H); print(SEP)
 
-    # Add RA to all results
     for r in all_results:
         r['ra'] = r['median'] / abs(r['p10']) if r.get('p10', 0) != 0 and r.get('median', 0) > 0 else -1
 
     all_results.sort(key=lambda x: x['median'], reverse=True)
-    for i, r in enumerate(all_results[:20]):
+    for i, r in enumerate(all_results):
         pr("#{:<2} {}".format(i+1, r['tag']), r)
-
-    print()
-    print("=" * 130)
-    print("  RISK-ADJUSTED RANKING — top 10 by median/|P10|")
-    print("=" * 130)
-    print(H); print(SEP)
-
-    all_results.sort(key=lambda x: x['ra'], reverse=True)
-    for i, r in enumerate(all_results[:10]):
-        pr("#{:<2} {} (RA={:.3f})".format(i+1, r['tag'], r['ra']), r)
-
-    # ================================================================
-    # PHASE 4: Validate top 5 at 5000 sessions
-    # ================================================================
-    # Pick top 5 by median, deduplicate with top 3 RA
-    top_median = sorted(all_results, key=lambda x: x['median'], reverse=True)[:5]
-    top_ra = sorted(all_results, key=lambda x: x['ra'], reverse=True)[:3]
-    seen = set()
-    validate_configs = []
-    for r in top_median + top_ra:
-        if r['tag'] not in seen:
-            seen.add(r['tag'])
-            validate_configs.append(r['tag'])
-
-    print()
-    print("=" * 130)
-    print("  PHASE 4: VALIDATION ({} sessions on top {} configs)".format(N2, len(validate_configs)))
-    print("=" * 130)
-    print(H); print(SEP)
-
-    # Re-run top configs with more sessions — need to find their params
-    # Store params in the tag for reconstruction
-    current = run_config(pool, "CURRENT v3.0.1 div=6000 b=10 2/2 d=0",
-                         N2, bank, 6000, 10, 2, 2, 0, 0, 1.0)
-    pr("CURRENT v3.0.1 (baseline)", current)
-
-    # Re-run specific promising configs at high session count
-    val_configs = [
-        ("div=4000 b=10",                 4000, 10, 2, 2, 0, 0, 1.0),
-        ("div=4000 b=12",                 4000, 12, 2, 2, 0, 0, 1.0),
-        ("div=5000 b=10",                 5000, 10, 2, 2, 0, 0, 1.0),
-        ("div=4000 b=10 PAT=1",           4000, 10, 2, 2, 1, 0, 1.0),
-        ("div=4000 b=10 PAT=1 cap=15%",   4000, 10, 2, 2, 1, 15, 1.0),
-        ("div=4000 b=10 PAT=1 cap=20%",   4000, 10, 2, 2, 1, 20, 1.0),
-        ("div=4000 b=10 cap=2/3",          4000, 10, 2, 3, 0, 0, 1.0),
-        ("div=4000 b=10 cap=2/3 PAT=1",   4000, 10, 2, 3, 1, 0, 1.0),
-        ("div=5000 b=10 PAT=1",           5000, 10, 2, 2, 1, 0, 1.0),
-        ("div=5000 b=10 cap=2/3 PAT=1",   5000, 10, 2, 3, 1, 0, 1.0),
-        ("div=4000 b=10 PAT=1 coil=0.5",  4000, 10, 2, 2, 1, 0, 0.5),
-        ("div=4000 b=10 PAT=1 cap=15% coil=0.5", 4000, 10, 2, 2, 1, 15, 0.5),
-    ]
-    for label, div, brake, cs, cm, delay, cap, coil in val_configs:
-        r = run_config(pool, label, N2, bank, div, brake, cs, cm, delay, cap, coil)
-        pr(label, r)
 
     pool.close(); pool.join()
     print("\n  Runtime: {:.1f}s".format(time.time() - t0))
