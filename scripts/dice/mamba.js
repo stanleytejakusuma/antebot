@@ -17,7 +17,7 @@
 //   TAIPAN (Roulette v2) / SIDEWINDER (HiLo) / BASILISK (Baccarat)
 
 strategyTitle = "MAMBA";
-version = "3.0.0";
+version = "3.0.1";
 author = "stanz";
 scripter = "stanz";
 
@@ -36,7 +36,7 @@ game = "dice";
 //      0   | 3.0x | -61.2%  | +$7.28 |  8.3% | 86.5% | v2.0 (pure IOL)
 //
 chance = 65;
-divider = 10000;
+divider = 5000;
 
 // D'ALEMBERT → MARTINGALE HYBRID
 // First dalCap losses: linear +1 unit per loss (D'Alembert phase)
