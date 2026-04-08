@@ -17,7 +17,7 @@
 //   TAIPAN (Roulette v2) / SIDEWINDER (HiLo) / BASILISK (Baccarat)
 
 strategyTitle = "MAMBA";
-version = "3.0.1";
+version = "3.1.1";
 author = "stanz";
 scripter = "stanz";
 
@@ -36,7 +36,7 @@ game = "dice";
 //      0   | 3.0x | -61.2%  | +$7.28 |  8.3% | 86.5% | v2.0 (pure IOL)
 //
 chance = 65;
-divider = 5000;
+divider = 3000;
 
 // D'ALEMBERT → MARTINGALE HYBRID
 // First dalCap losses: linear +1 unit per loss (D'Alembert phase)
@@ -45,23 +45,31 @@ divider = 5000;
 dalCap = 3;
 martIOL = 3.0;  // Martingale multiplier (3.0 = triple on loss)
 
+// Bet cap: max bet as % of working balance (prevents single-bet catastrophe)
+betCapPct = 15;         // 0 = no cap. 15 = max bet is 15% of working balance.
+
 // Trailing stop config
-trailActivatePct = 10;  // activate trailing stop after profit exceeds this % of startBalance
-trailLockPct = 60;     // exit if profit drops below this % of peak profit (40% cushion)
+trailActivatePct = 5;   // activate trail after profit exceeds this % of startBalance
+trailRangePct = 5;      // exit if profit drops this % of bank below peak
+                         // e.g., peak=10%, exit at 5% (range=5%). Fixed cushion, not % of peak.
 
 // Bet direction: true = over, false = under
 betHigh = true;
 
 // Fixed stop (upper target). Set 0 for trailing-only.
-stopTotalPct = 15;
-// With trail 5/80 + stop 15%: median +$42-61, bust 4.2-7%, win 88-92%
+stopTotalPct = 0;
 
-// Vault (optional insurance). Set 0 to disable.
-vaultPct = 0;
+// Vault: auto-detects platform. Real vault on Shuffle/Stake/Goated, virtual on Thrill/others.
+// Virtual vault: profits "locked" internally — script reduces working bankroll, money stays in balance.
+vaultPct = 5;
+// Platforms with native vault support (add others as confirmed)
+vaultMode = (casino === "SHUFFLE" || casino === "STAKE" || casino === "STAKE_US" || casino === "SHUFFLE_US" || casino === "GOATED") ? "real" : "virtual";
+
+// Stop loss (hard floor). ALWAYS have this as backstop.
+stopOnLoss = 15;
 
 // Other stop conditions. Set 0 to disable.
 stopOnProfit = 0;
-stopOnLoss = 0;
 stopAfterHands = 0;
 
 // Reset stats/console on start (set false to preserve previous session data)
@@ -80,6 +88,8 @@ if (resetOnStart) {
   resetStats();
   clearConsole();
 }
+
+log("#42CAF7", "Detected casino: " + casino + " | Vault mode: " + vaultMode + (vaultMode === "virtual" ? " (soft vault — funds stay in balance)" : " (real vault — depositToVault)"));
 
 target = chanceToMultiplier(chance);
 startBalance = balance;
@@ -101,6 +111,7 @@ betSize = baseBet;
 vaultProfitsThreshold = vaultPct > 0 ? startBalance * vaultPct / 100 : 0;
 stopOnTotalProfit = stopTotalPct > 0 ? startBalance * stopTotalPct / 100 : 0;
 trailActivateThreshold = startBalance * trailActivatePct / 100;
+trailRange = startBalance * trailRangePct / 100; // Fixed cushion in dollars
 
 // Max survivable LS
 function calcMaxLS() {
@@ -163,13 +174,15 @@ function logBanner() {
 function scriptLog() {
   clearConsole();
   logBanner();
+  log("#42CAF7", casino + " | " + vaultMode + " vault | SL " + stopOnLoss + "%");
 
   currentBet = baseBet * currentMultiplier;
   drawdown = peakProfit - profit;
   ddBar = drawdown > 0.001 ? " | DD: -$" + drawdown.toFixed(2) : "";
   profitRate = betsPlayed > 0 ? (profit / betsPlayed * 100).toFixed(2) : "0.00";
   rtp = totalWagered > 0 ? ((totalWagered + profit) / totalWagered * 100).toFixed(2) : "100.00";
-  vaultBar = totalVaulted > 0 ? " | Vaulted: $" + totalVaulted.toFixed(2) + " (" + vaultCount + "x)" : "";
+  vaultTag = vaultMode === "virtual" ? "Soft-Vault" : "Vault";
+  vaultBar = totalVaulted > 0 ? " | " + vaultTag + ": $" + totalVaulted.toFixed(2) + " (" + vaultCount + "x)" : "";
   targetBar = stopOnTotalProfit > 0 ? " | Target: $" + profit.toFixed(2) + "/$" + stopOnTotalProfit.toFixed(2) : "";
 
   runwayBar = "";
@@ -178,8 +191,9 @@ function scriptLog() {
     runwayBar = " | " + phase + " | LS " + lossStreak + " | Chain: -$" + currentChainCost.toFixed(2);
   }
 
-  totalAssets = balance + totalVaulted;
-  assetBar = totalVaulted > 0 ? " (Bal $" + balance.toFixed(2) + " + Vault $" + totalVaulted.toFixed(2) + ")" : "";
+  totalAssets = vaultMode === "virtual" ? balance : balance + totalVaulted;
+  workBal = vaultMode === "virtual" ? balance - totalVaulted : balance;
+  assetBar = totalVaulted > 0 ? " (Work $" + workBal.toFixed(2) + " + " + vaultTag + " $" + totalVaulted.toFixed(2) + ")" : "";
 
   // Trailing stop indicator
   trailBar = "";
@@ -258,10 +272,11 @@ function mainStrategy() {
       martPhaseHands++;
     }
 
-    // Soft bust: if next bet exceeds balance, reset to base
+    // Soft bust: if next bet exceeds working balance, reset to base
     nextBet = baseBet * currentMultiplier;
-    if (nextBet > balance * 0.95) {
-      log("#FD6868", "Soft bust: $" + nextBet.toFixed(2) + " > 95% of $" + balance.toFixed(2) + " — reset");
+    workBal = vaultMode === "virtual" ? balance - totalVaulted : balance;
+    if (nextBet > workBal * 0.95) {
+      log("#FD6868", "Soft bust: $" + nextBet.toFixed(2) + " > 95% of $" + workBal.toFixed(2) + " — reset");
       currentMultiplier = 1;
       dalUnits = 1;
       inMart = false;
@@ -272,9 +287,16 @@ function mainStrategy() {
     betSize = baseBet * currentMultiplier;
   }
 
+  // Hard bet cap: max bet as % of working balance
+  if (betCapPct > 0) {
+    workBal = vaultMode === "virtual" ? balance - totalVaulted : balance;
+    maxBetAllowed = workBal * betCapPct / 100;
+    if (betSize > maxBetAllowed) betSize = maxBetAllowed;
+  }
+
   // Trail-aware bet cap: if trail is active, don't let a loss breach the floor
   if (trailActive) {
-    trailFloor = peakProfit * trailLockPct / 100;
+    trailFloor = peakProfit - trailRange;
     maxTrailBet = profit - trailFloor;
     if (maxTrailBet > 0 && betSize > maxTrailBet) {
       betSize = maxTrailBet;
@@ -298,7 +320,7 @@ function trailingStopCheck() {
 
   if (trailActive) {
     // Update floor based on peak
-    trailFloor = peakProfit * trailLockPct / 100;
+    trailFloor = peakProfit - trailRange;
 
     // Fire trailing stop when profit drops below floor — no multiplier gate
     if (profit <= trailFloor) {
@@ -324,19 +346,30 @@ async function vaultHandle() {
     currentProfit >= vaultProfitsThreshold
   ) {
     vaultAmount = currentProfit;
-    await depositToVault(vaultAmount);
+
+    if (vaultMode === "real") {
+      // Real vault: move money to casino vault widget
+      await depositToVault(vaultAmount);
+    }
+    // Virtual vault: money stays in balance but script treats it as locked
+
     totalVaulted += vaultAmount;
     profitAtLastVault = profit;
     vaultCount++;
-    log("#4FFB4F", "Vaulted $" + vaultAmount.toFixed(2) + " | Total vaulted: $" + totalVaulted.toFixed(2));
+    vaultLabel = vaultMode === "virtual" ? "SOFT-VAULTED" : "VAULTED";
+    log("#4FFB4F", vaultLabel + " $" + vaultAmount.toFixed(2) + " | Total: $" + totalVaulted.toFixed(2));
 
-    // Adaptive rebase
-    startBalance = balance;
+    // Adaptive rebase — use WORKING balance (exclude vaulted)
+    workingBalance = balance - totalVaulted;
+    if (vaultMode === "real") workingBalance = balance; // Real vault already moved funds
+    startBalance = workingBalance;
     baseBet = startBalance / divider;
     if (baseBet < minBet) baseBet = minBet;
     betSize = baseBet;
     maxSurvivableLS = calcMaxLS();
     vaultProfitsThreshold = startBalance * vaultPct / 100;
+    trailActivateThreshold = startBalance * trailActivatePct / 100;
+    trailRange = startBalance * trailRangePct / 100;
   }
 }
 
@@ -357,8 +390,10 @@ function stopProfitCheck() {
 }
 
 function stopLossCheck() {
-  if (stopOnLoss > 0 && profit < -Math.abs(stopOnLoss)) {
-    log("#FD6868", "Stopped on $" + (-profit).toFixed(2) + " Loss");
+  stopLossAmount = startBalance * stopOnLoss / 100;
+  workProfit = vaultMode === "virtual" ? profit - totalVaulted : profit;
+  if (stopOnLoss > 0 && workProfit < -stopLossAmount) {
+    log("#FD6868", "Stop loss! Working P&L $" + workProfit.toFixed(2) + " (-" + stopOnLoss + "% of $" + startBalance.toFixed(2) + ") | Vault safe: $" + totalVaulted.toFixed(2));
     stopped = true;
     logSummary();
     engine.stop();
@@ -374,10 +409,13 @@ log("#00FF7F", "Starting balance: $" + startBalance.toFixed(2));
 log("#42CAF7", "Base bet: $" + baseBet.toFixed(5) + " | Chance: " + chance + "% | Payout: " + (winPayout + 1).toFixed(3) + "x (+" + (winPayout * 100).toFixed(1) + "%)");
 hybridLabel = dalCap > 0 ? "D'Alembert " + dalCap + " -> Mart " + iol + "x" : "Pure IOL " + iol + "x";
 log("#00FF7F", hybridLabel + " | Max LS: " + maxSurvivableLS);
-log("#FFD700", "Trailing stop: activate at " + trailActivatePct + "% ($" + trailActivateThreshold.toFixed(2) + "), lock " + trailLockPct + "% of peak");
-vaultLabel = vaultPct > 0 ? "Vault at " + vaultPct + "% ($" + vaultProfitsThreshold.toFixed(2) + ")" : "No vault";
+log("#FFD700", "Trail: arm at " + trailActivatePct + "% ($" + trailActivateThreshold.toFixed(2) + "), range " + trailRangePct + "% ($" + trailRange.toFixed(2) + " cushion from peak)");
+vaultModeLabel = vaultMode === "virtual" ? " [SOFT]" : "";
+vaultLabel = vaultPct > 0 ? "Vault" + vaultModeLabel + " at " + vaultPct + "% ($" + vaultProfitsThreshold.toFixed(2) + ")" : "No vault";
 stopLabel = stopTotalPct > 0 ? "Stop at " + stopTotalPct + "% ($" + stopOnTotalProfit.toFixed(2) + ")" : "No fixed stop";
-log("#4FFB4F", vaultLabel + " | " + stopLabel);
+slLabel = stopOnLoss > 0 ? "SL at " + stopOnLoss + "%" : "No SL";
+log("#4FFB4F", vaultLabel + " | " + stopLabel + " | " + slLabel);
+log("#42CAF7", "Casino: " + casino + " | Vault mode: " + vaultMode);
 
 engine.onBetPlaced(async function () {
   if (stopped) return;
@@ -408,8 +446,10 @@ function logSummary() {
     "#00FF7F",
     "================================\n MAMBA v" + version + " — " + exitType + "\n================================"
   );
-  totalAssetsFinal = balance + totalVaulted;
-  log("#4FFB4F", "ASSETS: $" + totalAssetsFinal.toFixed(2) + " (Bal $" + balance.toFixed(2) + " + Vault $" + totalVaulted.toFixed(2) + ") | P&L: $" + profit.toFixed(2));
+  totalAssetsFinal = vaultMode === "virtual" ? balance : balance + totalVaulted;
+  workBalFinal = vaultMode === "virtual" ? balance - totalVaulted : balance;
+  vaultTagFinal = vaultMode === "virtual" ? "Soft-Vault" : "Vault";
+  log("#4FFB4F", "ASSETS: $" + totalAssetsFinal.toFixed(2) + " (Work $" + workBalFinal.toFixed(2) + " + " + vaultTagFinal + " $" + totalVaulted.toFixed(2) + ") | P&L: $" + profit.toFixed(2));
   log("Bets: " + betsPlayed + " | W/L: " + totalWins + "/" + totalLosses);
   log("Peak: $" + peakProfit.toFixed(2) + " | Vaults: " + vaultCount);
   log("RTP: " + rtpFinal + "% | Wagered: $" + totalWagered.toFixed(2) + " (" + (totalWagered / startBalance).toFixed(1) + "x)");
