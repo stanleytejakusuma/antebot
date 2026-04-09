@@ -197,8 +197,7 @@ lastVaultedProfit = profit;
 startProfit = profit;
 startBalance = balance;
 vaulting = false;
-lastResetMsg = '';
-totalResets = 0;
+resetLog = [];
 
 bStop = false;
 bRunning = true;
@@ -469,8 +468,8 @@ RTP: ${this.rtp.toFixed(2)}%`);
         log(white, `Highest: ${this.highestProfit.toFixed(8)} / ${this.highestProfit.toFiatString()} (${(this.highestProfit / startBalance * 100).toFixed(2)}%)
 Lowest: ${this.lowestProfit.toFixed(8)} / ${this.lowestProfit.toFiatString()} (${(this.lowestProfit / startBalance * 100).toFixed(2)}%)
 Wagered: ${this.wagered.toFixed(8)} / ${this.wagered.toFiatString()} (${(this.wagered / startBalance * 100).toFixed(2)}%)`);
-        if (totalResets > 0) {
-            log('#FFFF2A', `Resets: ${totalResets} | Last: ${lastResetMsg}`);
+        for (var ri = 0; ri < resetLog.length; ri++) {
+            log('#FFFF2A', resetLog[ri]);
         }
     }
 };
@@ -492,8 +491,7 @@ engine.onBetPlaced((lastBet) => {
 
     if ((resetOnProfit > 0 && stats.profit >= resetOnProfit) || (resetOnLoss > 0 && -stats.profit >= resetOnLoss)) {
         var resetReason = stats.profit >= 0 ? 'profit +' + stats.profit.toFixed(4) : 'loss ' + stats.profit.toFixed(4);
-        totalResets++;
-        lastResetMsg = 'Cycle #' + totalResets + ' ended (' + resetReason + ' ' + currency + ')';
+        resetLog.push('Cycle #' + (resetLog.length + 1) + ' (' + resetReason + ' ' + currency + ')');
         betSize = initialBetSize;
         chance = initialChance;
         target = chanceToMultiplier(chance);
