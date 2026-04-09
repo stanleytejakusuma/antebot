@@ -36,7 +36,7 @@ stopOnReachedLoss = 0; // will only stop if reached (if async mode is false)
 
 // restart script condition (will reset internal console stats, not main ones)
 resetOnProfit = balance * 0.025; // restart strategy on profit (internal mini-session profit)
-resetOnLoss = 0; // restart strategy on loss (internal mini-session loss)
+resetOnLoss = balance * 0.05; // restart strategy on loss (internal mini-session loss)
 resetSeedOnReset = false; // if one of above variables triggers a restart, do we want to reset seed as well ?
 
 // stats colors // you can pick some on https://encycolorpedia.com/
@@ -486,6 +486,8 @@ engine.onBetPlaced((lastBet) => {
     target = chanceToMultiplier(chance);
 
     if ((resetOnProfit > 0 && stats.profit >= resetOnProfit) || (resetOnLoss > 0 && -stats.profit >= resetOnLoss)) {
+        var resetReason = stats.profit >= 0 ? 'profit +' + stats.profit.toFixed(4) : 'loss ' + stats.profit.toFixed(4);
+        log('#FFFF2A', 'Internal stats reset (' + resetReason + ' ' + currency + ') — new cycle');
         betSize = initialBetSize;
         chance = initialChance;
         target = chanceToMultiplier(chance);
