@@ -50,6 +50,7 @@ scripts/
   dice/           — Dice strategies (SIEGE is flagship)
   blackjack/      — Blackjack strategies (RAMPART is flagship)
   roulette/       — Roulette strategies (Profit on Red/Black)
+  mines/          — Mines strategies (SAPPER is flagship)
   community/      — Third-party scripts from forum (reference only)
   <game>/_archive — Superseded scripts
 docs/
@@ -76,6 +77,7 @@ docs/
 | `scripts/blackjack/martingale-paroli.js` | Blackjack | Mart+Paroli v1.0 — Martingale 2x + Paroli capitalize, +$163 median (div=6k), beats roulette R/B, 31.5% bust |
 | `scripts/blackjack/viper.js` | Blackjack | VIPER v4.0 — PATIENCE (absorb 1st loss) + Strike (Mart 2x) + Coil (brake@12) + Capitalize (Paroli 2x, 3 bets), div=4000, +$8.09 median ($100), 10.4% bust |
 | `scripts/baccarat/basilisk.js` | Baccarat | BASILISK v1.0 — Delayed IOL (PATIENCE): only escalate after 3+ consecutive losses, IOL 2.1x, tie shield, +$5.59 median ($100), 0% bust |
+| `scripts/mines/sapper.js` | Mines | SAPPER v1.0 — Mines m=3 f=4 IOL 3.0x, 57.8% win, +0.712x net, trail 8/60, +$5.97 median ($100), 0% bust. Beats MAMBA/COBRA on median. |
 | `scripts/tools/proving_ground/` | Python | PROVING GROUND — 3-pillar strategy testing harness (Monte Carlo + Markov Chain + Provably Fair Replay) |
 | `scripts/tools/dalembert-simulator.py` | Python | Monte Carlo simulator for BJ/baccarat D'Alembert parameter optimization |
 

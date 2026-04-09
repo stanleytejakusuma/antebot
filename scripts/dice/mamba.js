@@ -17,7 +17,7 @@
 //   TAIPAN (Roulette v2) / SIDEWINDER (HiLo) / BASILISK (Baccarat)
 
 strategyTitle = "MAMBA";
-version = "3.1.1";
+version = "3.1.2";
 author = "stanz";
 scripter = "stanz";
 
@@ -303,6 +303,16 @@ function mainStrategy() {
     }
   }
 
+  // SL-aware bet cap: prevent single bet from overshooting stop loss
+  if (stopOnLoss > 0) {
+    stopLossAmount = startBalance * stopOnLoss / 100;
+    workProfit = vaultMode === "virtual" ? profit - totalVaulted : profit;
+    slCushion = workProfit + stopLossAmount;
+    if (slCushion >= 0 && betSize > slCushion) {
+      betSize = slCushion;
+    }
+  }
+
   if (betSize < minBet) betSize = minBet;
   currentBet = betSize;
   if (currentBet > maxBetSeen) maxBetSeen = currentBet;
@@ -392,7 +402,7 @@ function stopProfitCheck() {
 function stopLossCheck() {
   stopLossAmount = startBalance * stopOnLoss / 100;
   workProfit = vaultMode === "virtual" ? profit - totalVaulted : profit;
-  if (stopOnLoss > 0 && workProfit < -stopLossAmount) {
+  if (stopOnLoss > 0 && workProfit <= -stopLossAmount) {
     log("#FD6868", "Stop loss! Working P&L $" + workProfit.toFixed(2) + " (-" + stopOnLoss + "% of $" + startBalance.toFixed(2) + ") | Vault safe: $" + totalVaulted.toFixed(2));
     stopped = true;
     logSummary();

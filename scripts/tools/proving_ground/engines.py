@@ -155,8 +155,50 @@ class HiLoEngine:
         return (True, accumulated - 1.0)
 
 
+class MinesEngine:
+    """Mines engine: 5x5 grid, configurable mines and field picks.
+
+    Binary outcome: all picked fields safe (win) or hit a mine (lose).
+    Payout uses 1% house edge like all Shuffle games.
+
+    Win probability = C(25-mines, fields) / C(25, fields)
+                    = product((safe-i)/(25-i)) for i in range(fields)
+
+    Gross payout = 0.99 / win_prob
+    """
+
+    name = "mines"
+
+    def __init__(self, mines=5, fields=1):
+        self.mines = mines
+        self.fields = fields
+        # Win probability: combinatorial
+        safe = 25 - mines
+        prob = 1.0
+        for i in range(fields):
+            prob *= (safe - i) / (25.0 - i)
+        self.win_prob = prob
+        # Net profit multiplier on win (1% house edge)
+        self.net_payout = 0.99 / prob - 1.0
+
+    def resolve(self, rng):
+        """Returns (won: bool, net_payout_mult: float)."""
+        won = rng.random() < self.win_prob
+        if won:
+            return (True, self.net_payout)
+        return (False, -1.0)
+
+    def resolve_from_float(self, f):
+        """From provably fair float."""
+        won = f < self.win_prob
+        if won:
+            return (True, self.net_payout)
+        return (False, -1.0)
+
+
 ENGINES = {
     "dice": DiceEngine,
     "roulette": RouletteEngine,
     "hilo": HiLoEngine,
+    "mines": MinesEngine,
 }

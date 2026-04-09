@@ -1,6 +1,6 @@
-// KRAIT v1.0 — Dual-Regime Dice Strategy
-// 50% chance (+0.98x), delayed IOL → Martingale 3x, SL/TP exits.
-// Two modes: PROFIT (IOL active) and REST (flat bets @95%, no IOL).
+// KRAIT v2.0 — Dual-Regime Dice Strategy
+// 40% chance (2.475x target), delayed IOL → Martingale 3.5x, SL/TP exits.
+// Two modes: PROFIT (IOL active) and REST (flat bets @98%, no IOL).
 // Switches to REST on drawdown, back to PROFIT after cooldown.
 //
 // ARCHITECTURE: Unlike trail-based strategies (STRIKER, MAMBA), KRAIT uses
@@ -8,19 +8,21 @@
 //   actually activates and provides protection. Trail kills sessions at
 //   ~120 hands — too short for switching to matter.
 //
-// WHY DUAL-REGIME: At 50%, P(LS>=7) ≈ 86% over 500 rounds. Regime
-//   switching reduces exposure: rest mode breaks deep chains, prevents
-//   cascading Mart escalation near the SL boundary.
+// v2.0 OPTIMIZATION: Chance sweep (35-55%, 10k sessions each) proved 40%
+//   optimal. Higher payout (1.475x vs 1.0625x at 48%) means chains resolve
+//   faster with fewer hands = less house edge exposure. IOL 3.5x edges out
+//   3.0x at 40% chance. SL5/TP10 (1:2 ratio) confirmed optimal.
 //
-// Scorecard ($100, 10k sessions): G=-0.56%, Grade A, HL=124, 0% bust
-//   Median: +$5.01, Win: 55%, ~229 bets/session
+// Scorecard ($100, 10k sessions): G=-0.36%, Grade A+, HL=191, 0% bust
+//   Mean: -$0.05/session, Win: 28%, ~370 bets/session
+//   vs v1.0.3: G improved 1.7x (-0.62% → -0.36%), HL nearly doubled
 //
 // Snake family: VIPER (BJ) / COBRA (Roulette) / MAMBA (Dice 65%) /
 //   TAIPAN (Roulette v2) / SIDEWINDER (HiLo) / BASILISK (Baccarat) /
 //   STRIKER (Dice 50%) / KRAIT (Dice dual-regime)
 
 strategyTitle = "KRAIT";
-version = "1.0.3";
+version = "2.0.0";
 author = "stanz";
 scripter = "stanz";
 
@@ -28,11 +30,11 @@ game = "dice";
 
 // USER CONFIG
 // ============================================================
-chance = 48;              // Profit mode: 48% chance, 1.0625x payout
-profitDivider = 10000;    // Profit mode base bet = balance / profitDivider
-wagerDivider = 30000;     // REST mode base bet = balance / wagerDivider (3x profit)
+chance = 40;              // Profit mode: 40% chance, 2.475x target (1.475x net profit)
+profitDivider = 75000;    // Profit mode base bet = balance / profitDivider
+wagerDivider = 30000;     // REST mode base bet = balance / wagerDivider
 delay = 1;                // Absorb first N losses flat before Mart
-martIOL = 3.0;            // Martingale multiplier per consecutive loss
+martIOL = 3.5;            // Martingale multiplier per consecutive loss
 betCapPct = 10;           // Max bet as % of balance
 stopLossPct = 5;          // Hard SL: exit at -5% of starting balance
 takeProfitPct = 10;       // Hard TP: exit at +10% of starting balance
