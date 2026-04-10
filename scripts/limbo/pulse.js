@@ -1,4 +1,4 @@
-// PULSE v1.0.0 — Windowed Stint IOL (Limbo)
+// PULSE v1.1.0 — Windowed Stint IOL (Limbo)
 // Completely new thesis, separate from the Snake Family.
 //
 // CORE IDEA: Don't bet real money on every roll.
@@ -19,14 +19,25 @@
 // This ensures each win EXACTLY recovers all previous stint losses + profit.
 // Divider is auto-calculated from coveredStreak.
 //
-// STINT ECONOMICS (target=5.0x, stint=15):
-//   P(at least 1 win in 15 bets at 19.8%): 96.6%
-//   Full stint wipeout cost: ~$10.42 (10.4% of balance)
-//   Can sustain ~3 wipeouts before SL ($30)
-//   Each win profits exactly 4x base at the level it hits.
+// v1.1: Tuned via Proving Ground sweep (247 configs, 1.23M sessions).
+//   Target 3.0x is the Goldilocks zone — 2.0x barely moves, 5.0x too volatile.
+//   Best config: t=3.0, s=20, c=25 → G=-0.24% (A+), 92.5% win, HL=294.
+//   Beats KRAIT (-0.36%, HL=191) on both G and half-life.
+//
+//   STINT ECONOMICS (target=3.0x, stint=20):
+//     P(at least 1 win in 20 bets at 33%): 1 - 0.67^20 = 99.8%
+//     IOL auto: 1.5x | divider auto: ~3326
+//     Win rate: 92.5% | Median: +$0.83 | CVaR10: -$8.50
+//     Half-life: 294 sessions (Grade A+)
+//
+//   TUNING LADDER (target=3.0x):
+//     Config          G(%)    Win%    Med     HL    Profile
+//     s=15 c=25      -0.11%  57.5%  +$0.76   639   Ultra-conservative
+//     s=20 c=25      -0.24%  92.5%  +$0.83   294   Recommended
+//     s=30 c=30      -0.36%  98.1%  +$0.40   191   KRAIT-tier safety
 
 strategyTitle = "PULSE";
-version = "1.0.0";
+version = "1.1.0";
 author = "stanz";
 scripter = "stanz";
 
@@ -36,16 +47,16 @@ game = "limbo";
 // ============================================================
 
 // TARGET & IOL
-target = 5.0;                 // 19.8% chance, 4x profit per win
-// IOL auto-calculated below: 1/(target-1)+1
+target = 3.0;                 // 33% chance, 2x profit per win (Goldilocks zone)
+// IOL auto-calculated below: 1/(target-1)+1 = 1.5
 
 // STINT SETTINGS
 prerollLength = 5;            // observation bets at minBet before stint
-stintLength = 15;             // real IOL bets per stint (capped)
+stintLength = 20;             // real IOL bets per stint (capped)
 
 // COVERAGE
 coveredStreak = 25;           // safety margin for divider calculation
-// divider auto-calculated below from coveredStreak
+// divider auto-calculated below from coveredStreak (~3326)
 
 // SESSION MANAGEMENT
 stopProfitPct = 10;           // exit at +10% profit
