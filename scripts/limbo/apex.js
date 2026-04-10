@@ -1,4 +1,4 @@
-// APEX v1.0.0 — Escalating Target IOL (Limbo)
+// APEX v1.1.0 — Escalating Target IOL (Limbo)
 // Completely new thesis, separate from the Snake Family.
 //
 // CORE IDEA: On loss, escalate BOTH bet size AND target multiplier.
@@ -7,30 +7,39 @@
 // but higher-paying multiplier. This is limbo-native (impossible in
 // roulette/BJ where you don't control the multiplier).
 //
-// ADVANTAGE: Far more capital-efficient than standard IOL.
-// At recovery level 4: 130%+ ROI vs Snake Family's ~34% ROI.
-// The elevated target means each recovery win pays disproportionately more.
-//
 // MECHANIC:
-//   Base: bet at startTarget (2.0x, 49.5% chance)
+//   Base: bet at startTarget (1.01x, 98% chance — ultra-safe start)
 //   On loss: target *= targetStep, betSize *= betIOL (dual escalation)
 //   Target caps at targetCap — beyond that, only bet escalates
 //   On win: reset BOTH target and bet to base, pocket profit
 //
-// ESCALATION SCHEDULE (targetStep=1.15, betIOL=1.5, cap=10x):
-//   Level  Target  Chance  BetMult
-//     0    2.00x   49.5%   1.0x
-//     1    2.30x   43.0%   1.5x
-//     2    2.65x   37.4%   2.25x
-//     3    3.04x   32.6%   3.38x
-//     4    3.50x   28.3%   5.06x
-//     5    4.02x   24.6%   7.59x
-//    ...
-//    11    9.31x   10.6%   86.5x
-//    12   10.00x    9.9%   129.7x  (cap)
+// v1.1: Tuned via Proving Ground (24 cap configs + 12 start targets, 180k sessions).
+//   Key findings:
+//   - Start at 98% chance (1.01x), not 50% — G jumps from -4.13% to -0.39%
+//   - targetStep=1.3 and betIOL=1.3 optimal (gentler than v1.0)
+//   - Cap=7.0 is the sweet spot — highest cap that stays Grade A+
+//   - Divider doesn't matter above 100k (identical results)
+//
+//   ESCALATION SCHEDULE (startTarget=1.01, targetStep=1.3, cap=7.0):
+//     Level  Target  Chance  BetMult
+//       0    1.01x   98.0%   1.0x
+//       1    1.31x   75.4%   1.3x
+//       2    1.71x   58.0%   1.69x
+//       3    2.22x   44.6%   2.20x
+//       4    2.88x   34.3%   2.86x
+//       5    3.75x   26.4%   3.71x
+//       6    4.88x   20.3%   4.83x
+//       7    6.34x   15.6%   6.27x
+//       8    7.00x   14.1%   8.16x  (cap)
+//
+//   DIVIDER LADDER (startTarget=1.01, cap=7):
+//     Divider   G(%)    Win%   Med     HL    Profile
+//     10k      -1.48%  76.2%  +$0.85   46   Aggressive (most profit)
+//     50k      -0.58%  82.7%  +$0.24  120   Balanced (recommended)
+//     100k     -0.39%  83.6%  +$0.13  176   Conservative (longest HL)
 
 strategyTitle = "APEX";
-version = "1.0.0";
+version = "1.1.0";
 author = "stanz";
 scripter = "stanz";
 
@@ -40,13 +49,13 @@ game = "limbo";
 // ============================================================
 
 // TARGET ESCALATION
-startTarget = 2.0;            // starting multiplier (49.5% chance)
-targetStep = 1.15;            // multiply target by this on each loss
-targetCap = 10.0;             // stop escalating target beyond this
+startTarget = 1.01;           // starting multiplier (98% chance — ultra-safe)
+targetStep = 1.3;             // multiply target by this on each loss
+targetCap = 7.0;              // stop escalating target beyond this (8 levels to cap)
 
 // BET ESCALATION
-betIOL = 1.5;                 // multiply bet by this on each loss
-divider = 10000;              // base bet = balance / divider
+betIOL = 1.3;                 // multiply bet by this on each loss (gentler than v1.0)
+divider = 50000;              // base bet = balance / divider (balanced profile)
 
 // SESSION MANAGEMENT
 stopProfitPct = 10;           // exit at +10% profit
