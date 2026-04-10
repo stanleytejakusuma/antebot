@@ -1,4 +1,4 @@
-// SURGE v1.0 — Dual-Phase Wager + Recovery Strategy
+// SURGEWAGER v1.1 — Dual-Phase Wager + Recovery Strategy
 // Based on SurgeWager by macvault/Vrafasky. Optimized for 80/20 wager-profit balance.
 //
 // WAGER PHASE: High-frequency betting at 98% chance (1.0102x target).
@@ -9,16 +9,23 @@
 //   Switches to 2.2x target (45% chance), IOL 88%, div=5000 base.
 //   Returns to wager phase when session profit >= 0.
 //
-// OPTIMIZATION: stopProfit=3% — proven in Monte Carlo (5K sessions):
-//   Original: 35.4x wager, 26.7% bust, 16.5% win, -$1.94 median
-//   +stop=3%: 29.6x wager, 23.2% bust, 37.9% win, -$1.04 median
-//   Keeps 84% of wager throughput, doubles win rate.
+// v1.1: Added stopLoss=30% conservative kill switch.
+//   Swing analysis shows median recovery swing of $6, P90 $17, P99 $47.
+//   SL=30% eliminates 100% of busts, keeps 73% of wager (21.4x vs 29.2x).
+//
+//   RISK PRESETS ($100 bank, 5K bets, stopProfit=3%):
+//
+//     SL   | Wager | Bust% | Win%  | Median | Max Loss | Profile
+//    ------|-------|-------|-------|--------|----------|----------
+//      0%  | 29.2x | 23.1% | 38.4% | -$1.02 |  -$100  | Aggressive (original)
+//     30%  | 21.4x |  0.0% | 29.2% | -$3.13 |   -$30  | Conservative (recommended)
+//     50%  | 28.9x |  0.0% | 38.4% | -$1.03 |   -$50  | Balanced
 //
 // Cost efficiency: ~1.01% per $1 wagered (matches house edge).
 // Viable when VIP rakeback/rewards exceed 1.01%.
 
-strategyTitle = "SURGE";
-version = "1.0.0";
+strategyTitle = "SURGEWAGER";
+version = "1.1.0";
 author = "stanz";
 scripter = "stanz";
 
@@ -42,7 +49,7 @@ switchToRecoverPct = 2.5;     // enter recovery when session loss >= this % of b
 
 // SESSION MANAGEMENT
 stopProfitPct = 3;            // exit session at +3% profit. THE key optimization.
-stopOnLoss = 0;               // hard stop loss (% of balance). 0 = no limit (bust allowed).
+stopOnLoss = 30;              // hard stop loss (% of balance). 0 = bust allowed. 30 = conservative.
 betHigh = true;               // dice direction
 
 // Reset stats/console on start
@@ -104,7 +111,7 @@ summaryPrinted = false;
 function logBanner() {
   log(
     "#00FF7F",
-    "================================\n SURGE v" + version +
+    "================================\n SURGEWAGER v" + version +
     "\n================================\n by " + author + " | Wager+Recovery | stop=" + stopProfitPct + "%" +
     "\n-------------------------------------------"
   );
@@ -250,7 +257,7 @@ function logSummary() {
   var exitType = sessionProfit >= 0 ? "PROFIT" : "LOSS";
   log(
     "#00FF7F",
-    "================================\n SURGE v" + version + " — " + exitType + "\n================================"
+    "================================\n SURGEWAGER v" + version + " — " + exitType + "\n================================"
   );
   log("#4FFB4F", "P&L: $" + sessionProfit.toFixed(2) + " | Balance: $" + balance.toFixed(2));
   log("#FFD700", "WAGER: $" + totalWagered.toFixed(2) + " (" + wagerMult + "x)");
