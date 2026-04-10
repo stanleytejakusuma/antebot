@@ -35,11 +35,12 @@
 //   DIVIDER LADDER (startTarget=1.01, cap=7):
 //     Divider   G(%)    Win%   Med     HL    Profile
 //     10k      -1.48%  76.2%  +$0.85   46   Aggressive (most profit)
-//     50k      -0.58%  82.7%  +$0.24  120   Balanced (recommended)
-//     100k     -0.39%  83.6%  +$0.13  176   Conservative (longest HL)
+//     10k      -1.48%  76.2%  +$0.85   46   Wager+Profit (recommended)
+//     50k      -0.58%  82.7%  +$0.24  120   Conservative
+//     100k     -0.39%  83.6%  +$0.13  176   Ultra-conservative
 
 strategyTitle = "APEX";
-version = "1.1.0";
+version = "1.2.0";
 author = "stanz";
 scripter = "stanz";
 
@@ -55,7 +56,7 @@ targetCap = 7.0;              // stop escalating target beyond this (8 levels to
 
 // BET ESCALATION
 betIOL = 1.3;                 // multiply bet by this on each loss (gentler than v1.0)
-divider = 50000;              // base bet = balance / divider (balanced profile)
+divider = 10000;              // base bet = balance / divider (wager+profit profile)
 
 // SESSION MANAGEMENT
 stopProfitPct = 10;           // exit at +10% profit
@@ -95,8 +96,12 @@ stopLossAmount = stopOnLoss > 0 ? startBalance * stopOnLoss / 100 : 0;
 // Stats
 sessionProfit = 0;
 totalWagered = 0;
+baseWagered = 0;             // wager from 1.01x bets only
+escalationWagered = 0;       // wager from escalation bets
 totalWins = 0;
 totalLosses = 0;
+baseBets = 0;                // count of 1.01x bets
+escalationBets = 0;          // count of escalation bets
 betsPlayed = 0;
 peakProfit = 0;
 worstDrawdown = 0;
@@ -138,12 +143,15 @@ function scriptLog() {
   log("#00FF7F", "Balance: $" + balance.toFixed(2) + " | P&L: $" + sessionProfit.toFixed(2) + ddBar);
   log("#4FFB4F", "Peak: $" + peakProfit.toFixed(2) + " | Worst DD: $" + worstDrawdown.toFixed(2));
 
-  var targetBar = stopProfitAmount > 0 ? " | Target: $" + sessionProfit.toFixed(2) + "/$" + stopProfitAmount.toFixed(2) : "";
+  var targetBar = stopProfitAmount > 0 ? " | TP: $" + sessionProfit.toFixed(2) + "/$" + stopProfitAmount.toFixed(2) : "";
   log("#FFD700", "Wager: $" + totalWagered.toFixed(2) + " (" + wagerMult + "x)" + targetBar);
+
+  var basePct = totalWagered > 0 ? (baseWagered / totalWagered * 100).toFixed(0) : "0";
+  log("#FF8C00", "Base 1.01x: $" + baseWagered.toFixed(2) + " (" + basePct + "%) | Esc: $" + escalationWagered.toFixed(2));
 
   log("#FFDB55", "W/L: " + totalWins + "/" + totalLosses + " | WS: " + winStreak + " | LS: " + lossStreak);
   log("#42CAF7", "Recoveries: " + recoveries + " | Max Level: " + maxLevel);
-  log("#FD71FD", "Bets: " + betsPlayed + " | Max Bet: $" + maxBetSeen.toFixed(4));
+  log("#FD71FD", "Bets: " + betsPlayed + " (" + baseBets + " base / " + escalationBets + " esc) | Max Bet: $" + maxBetSeen.toFixed(4));
 }
 
 // ============================================================
@@ -153,6 +161,15 @@ function scriptLog() {
 function mainStrategy() {
   betsPlayed++;
   totalWagered += lastBet.amount;
+
+  // Track base vs escalation wager
+  if (escalationLevel === 0) {
+    baseWagered += lastBet.amount;
+    baseBets++;
+  } else {
+    escalationWagered += lastBet.amount;
+    escalationBets++;
+  }
 
   var isWin = lastBet.win;
 
@@ -241,10 +258,12 @@ function logSummary() {
     "#FF8C00",
     "================================\n APEX v" + version + " — " + exitType + "\n================================"
   );
+  var basePct = totalWagered > 0 ? (baseWagered / totalWagered * 100).toFixed(0) : "0";
   log("#4FFB4F", "P&L: $" + sessionProfit.toFixed(2) + " | Balance: $" + balance.toFixed(2));
   log("#FFD700", "Wager: $" + totalWagered.toFixed(2) + " (" + wagerMult + "x)");
-  log("Bets: " + betsPlayed + " | W/L: " + totalWins + "/" + totalLosses);
-  log("Longest WS: " + longestWinStreak + " | Longest LS: " + longestLossStreak);
+  log("#FF8C00", "Base 1.01x: $" + baseWagered.toFixed(2) + " (" + basePct + "%) | Esc: $" + escalationWagered.toFixed(2));
+  log("Bets: " + betsPlayed + " (" + baseBets + " base / " + escalationBets + " esc)");
+  log("W/L: " + totalWins + "/" + totalLosses + " | Longest WS: " + longestWinStreak + " | Longest LS: " + longestLossStreak);
   log("Peak: $" + peakProfit.toFixed(2) + " | Worst DD: $" + worstDrawdown.toFixed(2));
   log("Recoveries: " + recoveries + " | Max Level: " + maxLevel);
   log("Max Bet: $" + maxBetSeen.toFixed(4));
